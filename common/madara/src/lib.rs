@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use scraper::{ElementRef, Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, MangaInfo};
 
@@ -269,7 +269,7 @@ fn parse_chapters(
             {
                 uploaded
             } else {
-                Utc::now().naive_utc()
+                NaiveDateTime::from_timestamp(0, 0)
             }
             .timestamp();
 
