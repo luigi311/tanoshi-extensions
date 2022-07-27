@@ -101,7 +101,7 @@ impl Into<MangaInfo> for &Dir {
             status: Some(self.ss.clone()),
             description: None,
             path: format!("/manga/{}", self.i),
-            cover_url: format!("https://cover.nep.li/cover/{}.jpg", self.i),
+            cover_url: format!("https://temp.compsci88.com/cover/{}.jpg", self.i),
         }
     }
 }
