@@ -11,7 +11,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 }
 
 const ID: i64 = 14;
-const NAME: &str = "Leviatan Scans";
+const NAME: &str = "LeviatanScans";
 const URL: &str = "https://leviatanscans.com";
 
 #[derive(Default)]
