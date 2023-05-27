@@ -580,7 +580,7 @@ pub fn get_chapters(source_id: i64, url: &str, path: String) -> Result<Vec<Chapt
             title: format!("{} {}", ch.type_field, number.to_string()),
             path: format!("/read-online/{index_name}-chapter-{number}{index}.html"),
             uploaded: ch.date.timestamp(),
-            number: ch.chapter.parse::<f64>().unwrap_or_default(),
+            number,
             scanlator: None,
         })
     }
