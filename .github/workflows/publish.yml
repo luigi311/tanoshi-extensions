@@ -17,15 +17,25 @@ jobs:
           - 1.58.0
           - 1.69.0
         os:
+          - ubuntu-20.04
           - macos-latest
           - windows-latest
+        arch:
+          - x86_64
         include:
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             extension: so
           - os: ubuntu-20.04
+            arch: aarch64
             target: aarch64-unknown-linux-gnu
             extension: so
+            toolchain: 1.58.0
+          - os: ubuntu-20.04
+            arch: aarch64
+            target: aarch64-unknown-linux-gnu
+            extension: so
+            toolchain: 1.69.0
           - os: macos-latest
             target: x86_64-apple-darwin
             extension: dylib
@@ -67,12 +77,17 @@ jobs:
           name: repo-${{ matrix.toolchain }}
           path: output
   push:
+    strategy:
+      matrix:
+        toolchain:
+          - 1.58.0
+          - 1.69.0
     runs-on: ubuntu-latest
     needs:
       - build
     steps:
       - uses: actions/checkout@v2
-      # - run: git clone -b repository https://github.com/faldez/tanoshi-extensions repository
+      - run: git clone -b ${{ matrix.toolchain }} https://github.com/faldez/tanoshi-extensions repository || git clone -b repository https://github.com/faldez/tanoshi-extensions repository
       - name: Download dist
         uses: actions/download-artifact@v2
         with:
