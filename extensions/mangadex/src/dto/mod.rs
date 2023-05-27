@@ -50,6 +50,9 @@ pub enum Relationship {
     CustomList {
         id: String,
     },
+    Creator {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
