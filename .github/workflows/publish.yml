@@ -42,6 +42,12 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             extension: dll
+          - os: ubuntu-20.04
+            toolchain: 1.58.0
+            cli: 0.6.3
+          - os: ubuntu-20.04
+            toolchain: 1.69.0
+            cli: 0.7.0
     runs-on: ${{ matrix.os }}
     environment: default
     steps:
@@ -56,13 +62,11 @@ jobs:
           use-cross: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
           command: build
           args: --target ${{ matrix.target }} --release
-      - name: Download tanoshi-cli
+      - name: Generate json
         if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
         run: |
-          curl https://objectstorage.ap-singapore-1.oraclecloud.com/n/ax3e5of0ojcf/b/tanoshi/o/tanoshi-cli%2F0.6.3%2Ftanoshi-cli -o $HOME/.cargo/bin/tanoshi-cli
+          curl https://objectstorage.ap-singapore-1.oraclecloud.com/n/ax3e5of0ojcf/b/tanoshi/o/tanoshi-cli%2F${{ matrix.cli }}%2Ftanoshi-cli -o $HOME/.cargo/bin/tanoshi-cli
           chmod +x $HOME/.cargo/bin/tanoshi-cli
-      - if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
-        run: |
           $HOME/.cargo/bin/tanoshi-cli --path target/${{ matrix.target }}/release generate-json
           mv output/${{ matrix.target }}/index.json output/
       - if: ${{ matrix.target != 'x86_64-unknown-linux-gnu' }}
