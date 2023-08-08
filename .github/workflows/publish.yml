@@ -1,8 +1,9 @@
 name: Publish
 
 on:
+  workflow_dispatch:
   push:
-    branches: [master]
+    branches: [ "master" ]
     paths:
       - common/**
       - extensions/**
@@ -80,6 +81,7 @@ jobs:
         with:
           name: repo-${{ matrix.toolchain }}
           path: output
+  
   push:
     strategy:
       matrix:
