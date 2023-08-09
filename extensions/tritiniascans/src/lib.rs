@@ -12,7 +12,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 
 const ID: i64 = 20;
 const NAME: &str = "TritiniaScans";
-const URL: &str = "https://tritinia.com";
+const URL: &str = "https://tritinia.org";
 
 #[derive(Default)]
 pub struct TritiniaScans;
@@ -110,7 +110,7 @@ mod test {
         let TritiniaScans = TritiniaScans::default();
 
         let res = TritiniaScans
-            .get_manga_detail("/manga/lord-of-money/".to_string())
+            .get_manga_detail("/manga/31c3d92e-d3f3-48c9-b151-e3e2e627acdd/".to_string())
             .unwrap();
 
         assert_eq!(res.title, "Lord of Money");
@@ -121,7 +121,7 @@ mod test {
         let TritiniaScans = TritiniaScans::default();
 
         let res = TritiniaScans
-            .get_chapters("/manga/lord-of-money/".to_string())
+            .get_chapters("/manga/31c3d92e-d3f3-48c9-b151-e3e2e627acdd/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
@@ -133,7 +133,7 @@ mod test {
         let TritiniaScans = TritiniaScans::default();
 
         let res = TritiniaScans
-            .get_pages("/manga/lord-of-money/ch-1/".to_string())
+            .get_pages("/manga/31c3d92e-d3f3-48c9-b151-e3e2e627acdd/ch-1/".to_string())
             .unwrap();
 
         println!("{res:?}");

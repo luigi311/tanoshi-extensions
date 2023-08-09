@@ -143,7 +143,6 @@ mod test {
                 "Comedy".to_string(),
                 "Cooking".to_string(),
                 "Drama".to_string(),
-                "Ecchi".to_string(),
                 "School life".to_string(),
                 "Shounen".to_string(),
             ]
