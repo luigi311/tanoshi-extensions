@@ -35,15 +35,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.toolchain }}
-          target: ${{ matrix.platform.target }}
-
       - uses: houseabsolute/actions-rust-cross@v0
         with:
-          command: both
+          toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.platform.target }} 
+          command: both
           args: "--release"
       
       - name: Generate json
