@@ -14,11 +14,7 @@ jobs:
       matrix:
         toolchain:
           - 1.69.0
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-        include:
+        platform:
           - os: ubuntu-latest
             arch: x86_64
             target: x86_64-unknown-linux-gnu
@@ -35,37 +31,37 @@ jobs:
             arch: x86_64
             target: x86_64-pc-windows-msvc
             extension: dll
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - uses: actions/checkout@v3
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.toolchain }}
-          target: ${{ matrix.target }}
+          target: ${{ matrix.platform.target }}
 
       - uses: houseabsolute/actions-rust-cross@v0
         with:
           command: both
-          target: ${{ matrix.target }} 
+          target: ${{ matrix.platform.target }} 
           args: "--release"
       
       - name: Generate json
-        if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
+        if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
         run: |
           URL=$(curl -sL "https://api.github.com/repos/luigi311/tanoshi/releases/latest" | grep "tanoshi-cli" | grep '"browser_download_url":' | sed -E 's/.*"([^"]+)".*/\1/') 
           curl -L $URL -o $HOME/.cargo/bin/tanoshi-cli
           chmod +x $HOME/.cargo/bin/tanoshi-cli
-          $HOME/.cargo/bin/tanoshi-cli --path target/${{ matrix.target }}/release generate-json
-          mv output/${{ matrix.target }}/index.json output/
+          $HOME/.cargo/bin/tanoshi-cli --path target/${{ matrix.platform.target }}/release generate-json
+          mv output/${{ matrix.platform.target }}/index.json output/
 
-      - if: ${{ matrix.target != 'x86_64-unknown-linux-gnu' }}
+      - if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' }}
         run: |
-          mkdir -p output/${{ matrix.target }}/
-          cp target/${{ matrix.target }}/release/*.${{ matrix.extension }} output/${{ matrix.target }}/
+          mkdir -p output/${{ matrix.platform.target }}/
+          cp target/${{ matrix.platform.target }}/release/*.${{ matrix.platform.extension }} output/${{ matrix.platform.target }}/
       
-      - if: ${{ matrix.target != 'x86_64-unknown-linux-gnu' && matrix.target != 'x86_64-pc-windows-msvc' }}
-        run: cd output/${{ matrix.target }}/ && for f in *.${{ matrix.extension }};do mv $f ${f#lib}; done; cd ../..
+      - if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' && matrix.platform.target != 'x86_64-pc-windows-msvc' }}
+        run: cd output/${{ matrix.platform.target }}/ && for f in *.${{ matrix.platform.extension }};do mv $f ${f#lib}; done; cd ../..
       
       - name: Upload dist
         uses: actions/upload-artifact@v3

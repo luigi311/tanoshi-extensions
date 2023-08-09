@@ -110,7 +110,7 @@ mod test {
         let MMScans = MMScans::default();
 
         let res = MMScans
-            .get_manga_detail("/manga/ygret/".to_string())
+            .get_manga_detail("/manga/ygre-t1234/".to_string())
             .unwrap();
 
         assert_eq!(res.title, "Ygret");
@@ -120,7 +120,7 @@ mod test {
     fn test_get_chapters() {
         let MMScans = MMScans::default();
 
-        let res = MMScans.get_chapters("/manga/ygret/".to_string()).unwrap();
+        let res = MMScans.get_chapters("/manga/ygre-t1234/".to_string()).unwrap();
 
         assert!(!res.is_empty());
         println!("{res:?}");
@@ -130,7 +130,7 @@ mod test {
     fn test_get_pages() {
         let MMScans = MMScans::default();
 
-        let res = MMScans.get_pages("/manga/ygret/1/".to_string()).unwrap();
+        let res = MMScans.get_pages("/manga/ygre-t1234/1/".to_string()).unwrap();
 
         println!("{res:?}");
 

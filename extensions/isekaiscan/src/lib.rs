@@ -12,7 +12,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 
 const ID: i64 = 18;
 const NAME: &str = "IsekaiScan.com";
-const URL: &str = "https://isekaiscan.com";
+const URL: &str = "https://isekaiscan.top";
 
 #[derive(Default)]
 pub struct IsekaiScan;

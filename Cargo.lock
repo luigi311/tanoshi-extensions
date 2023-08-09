@@ -18,15 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "alphascans"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tanoshi-lib",
- "wpmangareader",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -205,15 +196,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firstkissmanhua"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "madara",
- "tanoshi-lib",
-]
-
-[[package]]
 name = "flate2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -347,15 +329,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "isekaiscan"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "madara",
- "tanoshi-lib",
-]
-
-[[package]]
 name = "itoa"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -381,15 +354,6 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
-
-[[package]]
-name = "leviatanscans"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "madara",
- "tanoshi-lib",
-]
 
 [[package]]
 name = "libc"
@@ -521,15 +485,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "manhuafast"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "madara",
- "tanoshi-lib",
-]
-
-[[package]]
 name = "manhwa18cc"
 version = "0.1.9"
 dependencies = [
@@ -605,25 +560,6 @@ name = "new_debug_unreachable"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
-
-[[package]]
-name = "nhentai"
-version = "0.1.12"
-dependencies = [
- "anyhow",
- "chrono",
- "fancy-regex",
- "lazy_static",
- "log",
- "phf 0.10.1",
- "scraper",
- "serde",
- "serde-aux",
- "serde_json",
- "serde_qs",
- "tanoshi-lib",
- "ureq",
-]
 
 [[package]]
 name = "nodrop"
@@ -911,15 +847,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reaperscans"
-version = "0.1.4"
-dependencies = [
- "anyhow",
- "madara",
- "tanoshi-lib",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1052,17 +979,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61ea8d54c77f8315140a05f4c7237403bf38b72704d031543aa1d16abbf517d1"
 dependencies = [
  "serde_derive",
-]
-
-[[package]]
-name = "serde-aux"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93abf9799c576f004252b2a05168d58527fb7c54de12e94b4d12fe3475ffad24"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1216,15 +1132,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "three_sixty_five_manga"
-version = "0.1.2"
-dependencies = [
- "anyhow",
- "madara",
- "tanoshi-lib",
 ]
 
 [[package]]
