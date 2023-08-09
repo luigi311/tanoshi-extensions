@@ -14,7 +14,7 @@ This repository host extenstions for tanoshi
 | 9   | Nhentai         | Use nhentai api with different path than 6 | Removed |
 | 10  | Mangakakalot    |                                            | Active  |
 | 11  | Manganato       |                                            | Active  |
-| 12  | ManhuaFast      |                                            | Active  |
+| 12  | ManhuaFast      |                                            | Broken  |
 | 13  | MangaTX         |                                            | Active  |
 | 14  | Leviatan Scans  |                                            | Broken  |
 | 15  | Reaper Scans    |                                            | Broken  |
