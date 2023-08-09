@@ -9,34 +9,35 @@ on:
 
 jobs:
   build:
+
     strategy:
       matrix:
         toolchain:
           - 1.69.0
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
         include:
-          - os: ubuntu-20.04
-            arch: x64
+          - os: ubuntu-latest
+            arch: x86_64
             target: x86_64-unknown-linux-gnu
             extension: so          
-          - os: ubuntu-20.04
-            arch: aarch64
-            target: aarch64-unknown-linux-gnu
-            extension: so
-          - os: ubuntu-20.04
+          - os: ubuntu-latest
             arch: aarch64
             target: aarch64-unknown-linux-gnu
             extension: so
           - os: macos-latest
-            arch: x64
+            arch: x86_64
             target: x86_64-apple-darwin
             extension: dylib
           - os: windows-latest
-            arch: x64
+            arch: x86_64
             target: x86_64-pc-windows-msvc
             extension: dll
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -67,7 +68,7 @@ jobs:
         run: cd output/${{ matrix.target }}/ && for f in *.${{ matrix.extension }};do mv $f ${f#lib}; done; cd ../..
       
       - name: Upload dist
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: repo-${{ matrix.toolchain }}
           path: output
@@ -82,12 +83,12 @@ jobs:
     needs:
       - build
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - run: git clone -b ${{ matrix.toolchain }} https://github.com/luigi311/tanoshi-extensions repository || git clone -b repository https://github.com/luigi311/tanoshi-extensions repository
       
       - name: Download dist
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: repo-${{ matrix.toolchain }}
           path: repository
