@@ -7,5 +7,4 @@ exclude = [
     "extensions/nhentai",
     "extensions/reaperscans",
     "extensions/365manga",
-    "extensions/manhuafast",
 ]
