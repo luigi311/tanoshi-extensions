@@ -1,7 +1,7 @@
 [workspace]
 members = ["extensions/*", "common/*"]
 exclude = [
-    "extensions/firstkissmanhua",
+    "extensions/manhuafast",
     "extensions/isekaiscan",
     "extensions/nhentai",
     "extensions/reaperscans",
