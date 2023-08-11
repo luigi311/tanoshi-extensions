@@ -7,24 +7,24 @@ use tanoshi_lib::prelude::{Extension, Lang, PluginRegistrar, SourceInfo};
 tanoshi_lib::export_plugin!(register);
 
 fn register(registrar: &mut dyn PluginRegistrar) {
-    registrar.register_function(Box::new(IsekaiScan::default()));
+    registrar.register_function(Box::new(IsekaiScanManga::default()));
 }
 
-const ID: i64 = 18;
-const NAME: &str = "IsekaiScan.com";
-const URL: &str = "https://isekaiscan.top";
+const ID: i64 = 23;
+const NAME: &str = "IsekaiScanManga.com";
+const URL: &str = "https://isekaiscanmanga.com";
 
 #[derive(Default)]
-pub struct IsekaiScan;
+pub struct IsekaiScanManga;
 
-impl Extension for IsekaiScan {
+impl Extension for IsekaiScanManga {
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,
             name: NAME.to_string(),
             url: URL.to_string(),
             version: env!("CARGO_PKG_VERSION"),
-            icon: "https://i.imgur.com/7fsmq6F.png",
+            icon: "https://cdn-manga.com/files/logos/fav3.png",
             languages: Lang::Single("en".to_string()),
             nsfw: false,
         }
@@ -70,12 +70,12 @@ mod test {
 
     #[test]
     fn test_get_latest_manga() {
-        let IsekaiScan = IsekaiScan::default();
+        let IsekaiScanManga = IsekaiScanManga::default();
 
-        let res1 = IsekaiScan.get_latest_manga(1).unwrap();
+        let res1 = IsekaiScanManga.get_latest_manga(1).unwrap();
         assert!(!res1.is_empty());
 
-        let res2 = IsekaiScan.get_latest_manga(2).unwrap();
+        let res2 = IsekaiScanManga.get_latest_manga(2).unwrap();
         assert!(!res2.is_empty());
 
         assert_ne!(
@@ -87,17 +87,17 @@ mod test {
 
     #[test]
     fn test_get_popular_manga() {
-        let IsekaiScan = IsekaiScan::default();
+        let IsekaiScanManga = IsekaiScanManga::default();
 
-        let res = IsekaiScan.get_popular_manga(1).unwrap();
+        let res = IsekaiScanManga.get_popular_manga(1).unwrap();
         assert!(!res.is_empty());
     }
 
     #[test]
     fn test_search_manga() {
-        let IsekaiScan = IsekaiScan::default();
+        let IsekaiScanManga = IsekaiScanManga::default();
 
-        let res = IsekaiScan
+        let res = IsekaiScanManga
             .search_manga(1, Some("the+only".to_string()), None)
             .unwrap();
 
@@ -106,33 +106,32 @@ mod test {
 
     #[test]
     fn test_get_manga_detail() {
-        let IsekaiScan = IsekaiScan::default();
+        let IsekaiScanManga = IsekaiScanManga::default();
 
-        let res = IsekaiScan
-            .get_manga_detail("/manga/infinite-level-up-in-murim/".to_string())
+        let res = IsekaiScanManga
+            .get_manga_detail("/manga/way-to-be-the-evil-emperor/".to_string())
             .unwrap();
 
-        assert_eq!(res.title, "Infinite Level Up in Murim");
+        assert_eq!(res.title, "Way To Be The Evil Emperor");
     }
 
     #[test]
     fn test_get_chapters() {
-        let IsekaiScan = IsekaiScan::default();
+        let IsekaiScanManga = IsekaiScanManga::default();
 
-        let res = IsekaiScan
-            .get_chapters("/manga/infinite-level-up-in-murim/".to_string())
+        let res = IsekaiScanManga
+            .get_chapters("/manga/way-to-be-the-evil-emperor/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
-        println!("{res:?}");
     }
 
     #[test]
     fn test_get_pages() {
-        let IsekaiScan = IsekaiScan::default();
+        let IsekaiScanManga = IsekaiScanManga::default();
 
-        let res = IsekaiScan
-            .get_pages("/manga/infinite-level-up-in-murim/chapter-116/".to_string())
+        let res = IsekaiScanManga
+            .get_pages("/manga/way-to-be-the-evil-emperor/chapter-1/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());

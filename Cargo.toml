@@ -2,7 +2,6 @@
 members = ["extensions/*", "common/*"]
 exclude = [
     "extensions/manhuafast",
-    "extensions/isekaiscan",
     "extensions/nhentai",
     "extensions/reaperscans",
     "extensions/365manga",
