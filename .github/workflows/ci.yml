@@ -40,7 +40,7 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           target: ${{ matrix.platform.target }} 
-          command: both
+          command: build
           args: "--release"
       
       - name: Generate json
