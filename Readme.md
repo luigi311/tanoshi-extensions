@@ -24,8 +24,9 @@ This repository host extenstions for tanoshi
 | 19  | MMScans             |                                            | Active  |
 | 20  | TritiniaScans       |                                            | Active  |
 | 21  | AlphaScans          | Site closed                                | Removed |
-| 22  | AsuraScans          |                                            | Active  |
+| 22  | AsuraScans          | Site structure changed use 24              | Removed |
 | 23  | Isekaiscanmanga.com |                                            | Active  |
+| 24  | Asura.gg            |                                            | Active  |
 
 ## Diclaimer
 The developer of this application does not host any content and does not have affiliation with any content provider.

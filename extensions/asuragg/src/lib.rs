@@ -10,9 +10,9 @@ fn register(registrar: &mut dyn PluginRegistrar) {
     registrar.register_function(Box::new(AsuraScans::default()));
 }
 
-const ID: i64 = 22;
-const NAME: &str = "AsuraScans";
-const URL: &str = "https://asura.gg/";
+const ID: i64 = 24;
+const NAME: &str = "Asura.gg";
+const URL: &str = "https://asura.gg";
 
 #[derive(Default)]
 pub struct AsuraScans;

@@ -12,7 +12,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 
 const ID: i64 = 15;
 const NAME: &str = "ReaperScans";
-const URL: &str = "https://reaperscans.com/";
+const URL: &str = "https://reaperscans.com";
 
 #[derive(Default)]
 pub struct ReaperScans;
