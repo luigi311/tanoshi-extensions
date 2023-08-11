@@ -13,7 +13,6 @@ jobs:
     strategy:
       matrix:
         toolchain:
-          - 1.69.0
           - 1.71.1
         platform:
           - os: ubuntu-latest
