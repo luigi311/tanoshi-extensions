@@ -7,13 +7,13 @@ on:
       - .gitignore
       - "**/*.md"
 
+env:
+  RUST_TOOLCHAIN: 1.71.1
+
 jobs:
   build:
-
     strategy:
       matrix:
-        toolchain:
-          - 1.71.1
         platform:
           - os: ubuntu-latest
             arch: x86_64
@@ -37,7 +37,7 @@ jobs:
 
       - uses: houseabsolute/actions-rust-cross@v0
         with:
-          toolchain: ${{ matrix.toolchain }}
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           target: ${{ matrix.platform.target }} 
           command: build
           args: "--release"
@@ -62,28 +62,23 @@ jobs:
       - name: Upload dist
         uses: actions/upload-artifact@v3
         with:
-          name: repo-${{ matrix.toolchain }}
+          name: repo-${{ env.RUST_TOOLCHAIN }}
           path: output
   
   push:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-    strategy:
-      matrix:
-        toolchain:
-          - 1.69.0
-          - 1.71.1
     runs-on: ubuntu-latest
     needs:
       - build
     steps:
       - uses: actions/checkout@v3
 
-      - run: git clone -b ${{ matrix.toolchain }} https://github.com/luigi311/tanoshi-extensions repository || git clone -b repository https://github.com/luigi311/tanoshi-extensions repository
+      - run: git clone -b ${{ env.RUST_TOOLCHAIN }} https://github.com/luigi311/tanoshi-extensions repository || git clone -b repository https://github.com/luigi311/tanoshi-extensions repository
       
       - name: Download dist
         uses: actions/download-artifact@v3
         with:
-          name: repo-${{ matrix.toolchain }}
+          name: repo-${{ env.RUST_TOOLCHAIN }}
           path: repository
 
       - name: Commit files
@@ -99,5 +94,5 @@ jobs:
         uses: ad-m/github-push-action@v0.6.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ matrix.toolchain }}
+          branch: ${{ env.RUST_TOOLCHAIN }}
           directory: repository
