@@ -11,7 +11,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 }
 
 const ID: i64 = 23;
-const NAME: &str = "IsekaiScanManga.com";
+const NAME: &str = "IsekaiScanManga";
 const URL: &str = "https://isekaiscanmanga.com";
 
 #[derive(Default)]
