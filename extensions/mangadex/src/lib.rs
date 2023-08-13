@@ -21,7 +21,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub static ID: i64 = 2;
-pub static NAME: &str = "mangadex";
+pub static NAME: &str = "Mangadex";
 pub static URL: &str = "https://api.mangadex.org";
 
 #[derive(Default)]

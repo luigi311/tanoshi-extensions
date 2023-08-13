@@ -2,7 +2,7 @@ use guyalib::{get_chapters, get_manga_detail, get_manga_list, get_pages};
 use tanoshi_lib::prelude::{Extension, Lang, PluginRegistrar};
 
 const ID: i64 = 7;
-const NAME: &str = "guya";
+const NAME: &str = "Guya";
 const URL: &str = "https://guya.moe";
 
 tanoshi_lib::export_plugin!(register);
