@@ -73,8 +73,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - run: git clone -b ${{ env.RUST_TOOLCHAIN }} https://github.com/luigi311/tanoshi-extensions repository || git clone -b repository https://github.com/luigi311/tanoshi-extensions repository
-      
+      - name: Clone repo
+        run: |
+          git clone https://github.com/luigi311/tanoshi-extensions repository
+          cd repository
+          # Create branch if not exists
+          git checkout ${{ env.RUST_TOOLCHAIN }} || git checkout -b ${{ env.RUST_TOOLCHAIN }}
+          # Remove all existing files
+          rm -rf *
+          cd ..
+          
       - name: Download dist
         uses: actions/download-artifact@v3
         with:
