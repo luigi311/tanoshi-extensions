@@ -7,24 +7,24 @@ use wpmangastream::{
 tanoshi_lib::export_plugin!(register);
 
 fn register(registrar: &mut dyn PluginRegistrar) {
-    registrar.register_function(Box::new(AsuraGG::default()));
+    registrar.register_function(Box::new(AsuraScans::default()));
 }
 
 const ID: i64 = 24;
-const NAME: &str = "AsuraGG";
-const URL: &str = "https://asura.gg";
+const NAME: &str = "AsuraScans";
+const URL: &str = "https://asura.nacm.xyz";
 
 #[derive(Default)]
-pub struct AsuraGG;
+pub struct AsuraScans;
 
-impl Extension for AsuraGG {
+impl Extension for AsuraScans {
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,
             name: NAME.to_string(),
             url: URL.to_string(),
             version: env!("CARGO_PKG_VERSION"),
-            icon: "https://asura.gg//wp-content/uploads/2021/03/cropped-Group_1-1-270x270.png",
+            icon: "https://asura.nacm.xyz/wp-content/uploads/2021/03/Group_1.png",
             languages: Lang::Single("en".to_string()),
             nsfw: false,
         }
@@ -70,12 +70,12 @@ mod test {
 
     #[test]
     fn test_get_latest_manga() {
-        let AsuraGG = AsuraGG::default();
+        let AsuraScans = AsuraScans::default();
 
-        let res1 = AsuraGG.get_latest_manga(1).unwrap();
+        let res1 = AsuraScans.get_latest_manga(1).unwrap();
         assert!(!res1.is_empty());
 
-        let res2 = AsuraGG.get_latest_manga(2).unwrap();
+        let res2 = AsuraScans.get_latest_manga(2).unwrap();
         assert!(!res2.is_empty());
 
         assert_ne!(
@@ -87,17 +87,17 @@ mod test {
 
     #[test]
     fn test_get_popular_manga() {
-        let AsuraGG = AsuraGG::default();
+        let AsuraScans = AsuraScans::default();
 
-        let res = AsuraGG.get_popular_manga(1).unwrap();
+        let res = AsuraScans.get_popular_manga(1).unwrap();
         assert!(!res.is_empty());
     }
 
     #[test]
     fn test_search_manga() {
-        let AsuraGG = AsuraGG::default();
+        let AsuraScans = AsuraScans::default();
 
-        let res = AsuraGG
+        let res = AsuraScans
             .search_manga(1, Some("Star".to_string()), None)
             .unwrap();
 
@@ -106,9 +106,9 @@ mod test {
 
     #[test]
     fn test_get_manga_detail() {
-        let AsuraGG = AsuraGG::default();
+        let AsuraScans = AsuraScans::default();
 
-        let res = AsuraGG
+        let res = AsuraScans
             .get_manga_detail("/manga/0223090894-reincarnation-of-the-suicidal-battle-god/".to_string())
             .unwrap();
 
@@ -117,9 +117,9 @@ mod test {
 
     #[test]
     fn test_get_chapters() {
-        let AsuraGG = AsuraGG::default();
+        let AsuraScans = AsuraScans::default();
 
-        let res = AsuraGG
+        let res = AsuraScans
             .get_chapters("/manga/0223090894-reincarnation-of-the-suicidal-battle-god/".to_string())
             .unwrap();
 
@@ -129,9 +129,9 @@ mod test {
 
     #[test]
     fn test_get_pages() {
-        let AsuraGG = AsuraGG::default();
+        let AsuraScans = AsuraScans::default();
 
-        let res = AsuraGG
+        let res = AsuraScans
             .get_pages("/2226495089-reincarnation-of-the-suicidal-battle-god-chapter-1/".to_string())
             .unwrap();
 
