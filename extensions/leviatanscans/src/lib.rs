@@ -12,7 +12,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 
 const ID: i64 = 14;
 const NAME: &str = "LeviatanScans";
-const URL: &str = "https://en.leviatanscans.com";
+const URL: &str = "https://lscomic.com";
 
 #[derive(Default)]
 pub struct LeviatanScan;
@@ -109,7 +109,7 @@ mod test {
         let LeviatanScan = LeviatanScan::default();
 
         let res = LeviatanScan
-            .get_manga_detail("/manga/survival-story-of-a-sword-king-in-a-fantasy-world-1/".to_string())
+            .get_manga_detail("/manga/survival-story-of-a-sword-king-in-a-fantasy-world/".to_string())
             .unwrap();
 
         assert_eq!(res.title, "Survival Story of a Sword King in a Fantasy World");
@@ -120,7 +120,7 @@ mod test {
         let LeviatanScan = LeviatanScan::default();
 
         let res = LeviatanScan
-            .get_chapters("/manga/survival-story-of-a-sword-king-in-a-fantasy-world-1/".to_string())
+            .get_chapters("/manga/survival-story-of-a-sword-king-in-a-fantasy-world/".to_string())
             .unwrap();
         assert!(!res.is_empty());
         println!("{res:?}");
@@ -131,7 +131,7 @@ mod test {
         let LeviatanScan = LeviatanScan::default();
 
         let res = LeviatanScan
-            .get_pages("/manga/survival-story-of-a-sword-king-in-a-fantasy-world-1/chapter-1/".to_string())
+            .get_pages("/manga/survival-story-of-a-sword-king-in-a-fantasy-world/chapter-1/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());

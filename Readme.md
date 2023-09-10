@@ -16,7 +16,7 @@ This repository host extenstions for tanoshi
 | 11  | Manganato           |                                            | Active  |
 | 12  | ManhuaFast          |                                            | Broken  |
 | 13  | MangaTX             |                                            | Active  |
-| 14  | Leviatan Scans      |                                            | Active  |
+| 14  | Leviatan Scans      | Site structure changed, use 26             | Removed |
 | 15  | Reaper Scans        |                                            | Broken  |
 | 16  | 1st Kiss Manhua     |                                            | Active  |
 | 17  | 365Manga            |                                            | Broken  |
@@ -24,10 +24,11 @@ This repository host extenstions for tanoshi
 | 19  | MMScans             |                                            | Active  |
 | 20  | TritiniaScans       |                                            | Active  |
 | 21  | AlphaScans          | Site closed                                | Removed |
-| 22  | AsuraScans          | Site structure changed use 24              | Removed |
+| 22  | AsuraScans          | Site structure changed, use 24             | Removed |
 | 23  | Isekaiscanmanga.com |                                            | Active  |
-| 24  | Asurascans          | Site structure changed use 25              | Removed |
+| 24  | Asurascans          | Site structure changed, use 25             | Removed |
 | 25  | AsuraScans          |                                            | Active  |
+| 26  | LeviatanScans       |                                            | Active  |
 
 ## Diclaimer
 The developer of this application does not host any content and does not have affiliation with any content provider.
