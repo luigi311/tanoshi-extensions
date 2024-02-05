@@ -2,7 +2,7 @@ mod dto;
 mod filter;
 
 use crate::dto::{
-    manga::{request, ListOrder, Order},
+    manga::{request, ListOrder, Order, Rating},
     Relationship, Results,
 };
 use anyhow::{anyhow, bail, Result};
@@ -251,6 +251,7 @@ impl Extension for Mangadex {
         } else if let Some(query) = query {
             request::MangaList {
                 title: Some(query),
+                content_rating: vec![Rating::Safe, Rating::Suggestive, Rating::Erotica, Rating::Pornographic],
                 ..Default::default()
             }
         } else {

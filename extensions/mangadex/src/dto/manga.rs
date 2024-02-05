@@ -304,10 +304,7 @@ pub mod request {
                 original_language: Default::default(),
                 publication_demographic: Default::default(),
                 ids: Default::default(),
-                content_rating: [Rating::Safe, Rating::Suggestive, Rating::Erotica, Rating::Pornographic]
-                    .iter()
-                    .cloned()
-                    .collect(),
+                content_rating: Default::default(),
                 created_at_since: Default::default(),
                 updated_at_since: Default::default(),
                 order: Default::default(),
