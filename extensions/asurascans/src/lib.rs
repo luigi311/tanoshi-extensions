@@ -12,7 +12,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 
 const ID: i64 = 25;
 const NAME: &str = "AsuraScans";
-const URL: &str = "https://asuracomics.com";
+const URL: &str = "https://asuratoon.com";
 
 #[derive(Default)]
 pub struct AsuraScans;
@@ -24,7 +24,7 @@ impl Extension for AsuraScans {
             name: NAME.to_string(),
             url: URL.to_string(),
             version: env!("CARGO_PKG_VERSION"),
-            icon: "https://asuracomics.com/wp-content/uploads/2021/03/Group_1.png",
+            icon: "https://asuratoon.com/wp-content/uploads/2021/03/Group_1.png",
             languages: Lang::Single("en".to_string()),
             nsfw: false,
         }
@@ -109,7 +109,7 @@ mod test {
         let AsuraScans = AsuraScans::default();
 
         let res = AsuraScans
-            .get_manga_detail("/manga/2091190535-reincarnation-of-the-suicidal-battle-god/".to_string())
+            .get_manga_detail("/manga/9331846205-reincarnation-of-the-suicidal-battle-god/".to_string())
             .unwrap();
 
         assert_eq!(res.title, "Reincarnation of the Suicidal Battle God");
@@ -120,7 +120,7 @@ mod test {
         let AsuraScans = AsuraScans::default();
 
         let res = AsuraScans
-            .get_chapters("/manga/2091190535-reincarnation-of-the-suicidal-battle-god/".to_string())
+            .get_chapters("/manga/9331846205-reincarnation-of-the-suicidal-battle-god/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
@@ -132,7 +132,7 @@ mod test {
         let AsuraScans = AsuraScans::default();
 
         let res = AsuraScans
-            .get_pages("/3495919670-reincarnation-of-the-suicidal-battle-god-chapter-1/".to_string())
+            .get_pages("/9643503911-reincarnation-of-the-suicidal-battle-god-chapter-1/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
