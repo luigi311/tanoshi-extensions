@@ -15,7 +15,7 @@ This repository host extenstions for tanoshi
 | 10  | Mangakakalot        |                                            | Active  |
 | 11  | Manganato           |                                            | Active  |
 | 12  | ManhuaFast          |                                            | Broken  |
-| 13  | MangaTX             |                                            | Active  |
+| 13  | MangaTX             | Site structure changed, use 27             | Removed |
 | 14  | Leviatan Scans      | Site structure changed, use 26             | Removed |
 | 15  | Reaper Scans        |                                            | Broken  |
 | 16  | 1st Kiss Manhua     |                                            | Active  |
@@ -29,6 +29,7 @@ This repository host extenstions for tanoshi
 | 24  | Asurascans          | Site structure changed, use 25             | Removed |
 | 25  | AsuraScans          |                                            | Active  |
 | 26  | LeviatanScans       |                                            | Active  |
+| 27  | MangaTX             |                                            | Active  |
 
 ## Diclaimer
 The developer of this application does not host any content and does not have affiliation with any content provider.

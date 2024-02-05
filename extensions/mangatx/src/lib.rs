@@ -10,9 +10,9 @@ fn register(registrar: &mut dyn PluginRegistrar) {
     registrar.register_function(Box::new(MangaTX::default()));
 }
 
-const ID: i64 = 13;
+const ID: i64 = 27;
 const NAME: &str = "MangaTX";
-const URL: &str = "https://mangatx.com";
+const URL: &str = "https://mangatx.to";
 
 #[derive(Default)]
 pub struct MangaTX;
@@ -109,7 +109,7 @@ mod test {
         let MangaTX = MangaTX::default();
 
         let res = MangaTX
-            .get_manga_detail("/manga/the-challenger/".to_string())
+            .get_manga_detail("/manhua/the-challenger-all-chapters/".to_string())
             .unwrap();
 
         assert_eq!(res.title, "The Challenger");
@@ -120,7 +120,7 @@ mod test {
         let MangaTX = MangaTX::default();
 
         let res = MangaTX
-            .get_chapters("/manga/the-challenger/".to_string())
+            .get_chapters("/manhua/the-challenger-all-chapters/".to_string())
             .unwrap();
         assert!(!res.is_empty());
         println!("{res:?}");
@@ -131,7 +131,7 @@ mod test {
         let MangaTX = MangaTX::default();
 
         let res = MangaTX
-            .get_pages("/manga/the-challenger/chapter-41/".to_string())
+            .get_pages("/manhua/the-challenger-all-chapters/chapter-40/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
