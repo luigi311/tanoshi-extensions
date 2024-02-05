@@ -8,3 +8,8 @@ exclude = [
     "extensions/firstkissmanhua",
     "extensions/mmscans",
 ]
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true

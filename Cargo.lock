@@ -25,7 +25,7 @@ checksum = "08f9b8508dccb7687a1d6c4ce66b2b0ecef467c94667de27d8d7fe1f8d2a9cdc"
 
 [[package]]
 name = "asurascans"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "tanoshi-lib",
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "guya"
-version = "0.1.6"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "guyalib",
@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "isekaiscanmanga"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "madara",
@@ -366,7 +366,7 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "leviatanscans"
-version = "0.1.6"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "madara",
@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "mangadex"
-version = "0.1.8"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -439,7 +439,7 @@ dependencies = [
 
 [[package]]
 name = "mangakakalot"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "mangakakalot-common",
@@ -467,7 +467,7 @@ dependencies = [
 
 [[package]]
 name = "mangalife"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "nepnep",
@@ -476,7 +476,7 @@ dependencies = [
 
 [[package]]
 name = "manganato"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "mangakakalot-common",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "mangasee"
-version = "0.1.10"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "nepnep",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "mangatx"
-version = "0.1.5"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "madara",
@@ -504,7 +504,7 @@ dependencies = [
 
 [[package]]
 name = "manhwa18cc"
-version = "0.1.9"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "madara",
@@ -1170,7 +1170,7 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tritiniascans"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "madara",
