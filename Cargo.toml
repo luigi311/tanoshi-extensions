@@ -6,4 +6,5 @@ exclude = [
     "extensions/reaperscans",
     "extensions/365manga",
     "extensions/firstkissmanhua",
+    "extensions/mmscans",
 ]

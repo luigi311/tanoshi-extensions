@@ -21,7 +21,7 @@ This repository host extenstions for tanoshi
 | 16  | 1st Kiss Manhua     |                                            | Active  |
 | 17  | 365Manga            |                                            | Broken  |
 | 18  | IsekaiScan.com      | Site closed                                | Removed |
-| 19  | MMScans             |                                            | Active  |
+| 19  | MMScans             | Site closed                                | Removed |
 | 20  | TritiniaScans       |                                            | Active  |
 | 21  | AlphaScans          | Site closed                                | Removed |
 | 22  | AsuraScans          | Site structure changed, use 24             | Removed |
