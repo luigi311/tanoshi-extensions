@@ -81,7 +81,7 @@ pub fn parse_search_manga_list(
 }
 
 pub fn get_manga_detail(path: &str, source_id: i64) -> Result<MangaInfo> {
-    let body = ureq::get(&format!("https://readmanganato.com{path}"))
+    let body = ureq::get(&format!("https://chapmanganato.com{path}"))
         .call()?
         .into_string()?;
 
@@ -136,7 +136,7 @@ pub fn get_manga_detail(path: &str, source_id: i64) -> Result<MangaInfo> {
 }
 
 pub fn get_chapters(path: &str, source_id: i64) -> Result<Vec<ChapterInfo>> {
-    let body = ureq::get(&format!("https://readmanganato.com{path}"))
+    let body = ureq::get(&format!("https://chapmanganato.com{path}"))
         .call()?
         .into_string()?;
 

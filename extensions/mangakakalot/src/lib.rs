@@ -76,7 +76,7 @@ impl Extension for Mangakakalot {
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        let body = ureq::get(&format!("https://readmanganato.com{path}"))
+        let body = ureq::get(&format!("https://chapmanganato.com{path}"))
             .call()?
             .into_string()?;
         get_pages(&body)
