@@ -276,7 +276,7 @@ impl Extension for Mangadex {
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<ChapterInfo>> {
         let url = format!(
-            "{}{}/feed?limit=500&translatedLanguage[]=en&includes[]=scanlation_group",
+            "{}{}/feed?limit=500&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&translatedLanguage[]=en&includes[]=scanlation_group",
             URL, path
         );
 
