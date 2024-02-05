@@ -72,7 +72,7 @@ impl Extension for Manganato {
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        let body = ureq::get(&format!("https://readmanganato.com{path}"))
+        let body = ureq::get(&format!("https://chapmanganato.to{path}"))
             .call()?
             .into_string()?;
         get_pages(&body)
