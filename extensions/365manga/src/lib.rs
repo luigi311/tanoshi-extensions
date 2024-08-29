@@ -12,7 +12,7 @@ fn register(registrar: &mut dyn PluginRegistrar) {
 
 const ID: i64 = 17;
 const NAME: &str = "365Manga";
-const URL: &str = "https://365manga.com";
+const URL: &str = "https://harimanga.com";
 
 #[derive(Default)]
 pub struct ThreeSixtyFiveManga;
@@ -109,10 +109,10 @@ mod test {
         let ThreeSixtyFiveManga = ThreeSixtyFiveManga::default();
 
         let res = ThreeSixtyFiveManga
-            .get_manga_detail("/manga/matchless-emperor/".to_string())
+            .get_manga_detail("/manga/how-to-make-a-loving-savior-an-emperor/".to_string())
             .unwrap();
 
-        assert_eq!(res.title, "Matchless Emperor");
+        assert_eq!(res.title, "How To Make A Loving Savior an Emperor");
     }
 
     #[test]
@@ -120,7 +120,7 @@ mod test {
         let ThreeSixtyFiveManga = ThreeSixtyFiveManga::default();
 
         let res = ThreeSixtyFiveManga
-            .get_chapters("/manga/matchless-emperor/".to_string())
+            .get_chapters("/manga/how-to-make-a-loving-savior-an-emperor/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
@@ -132,7 +132,7 @@ mod test {
         let ThreeSixtyFiveManga = ThreeSixtyFiveManga::default();
 
         let res = ThreeSixtyFiveManga
-            .get_pages("/manga/matchless-emperor/chapter-9/".to_string())
+            .get_pages("/manga/how-to-make-a-loving-savior-an-emperor/chapter-9/".to_string())
             .unwrap();
 
         assert!(!res.is_empty());
