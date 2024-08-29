@@ -35,23 +35,38 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Cargo build
+      - name: Cross build
+        if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' }}
         uses: houseabsolute/actions-rust-cross@v0
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           target: ${{ matrix.platform.target }} 
           command: build
           args: "--release"
-      
+
+      - name: Start FlareSolverr
+        if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
+        run: | 
+          docker run -d \
+            --name=flaresolverr \
+            -p 8191:8191 \
+            -e LOG_LEVEL=info \
+            --restart unless-stopped \
+            ghcr.io/flaresolverr/flaresolverr:latest
+          
+          # Sleep 5 seconds to wait for FlareSolverr to start
+          sleep 5
+
       # Test only on linux once
       - name: Cargo test
-        uses: houseabsolute/actions-rust-cross@v0
         if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.platform.target }} 
-          command: test
-          args: "--release"
+        run: |
+          cargo build --release --target ${{ matrix.platform.target }}
+
+          ALL_PROXY=http://localhost:8191 cargo test --release --target ${{ matrix.platform.target }}
+
+          # Stop FlareSolverr
+          docker stop flaresolverr
 
       - name: Generate json
         if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
