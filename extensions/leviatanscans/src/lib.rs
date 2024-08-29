@@ -112,7 +112,7 @@ mod test {
             .get_manga_detail("/manga/survival-story-of-a-sword-king-in-a-fantasy-world/".to_string())
             .unwrap();
 
-        assert_eq!(res.title, "Survival Story of a Sword King in a Fantasy World");
+        assert_eq!(res.title, "How a Sword King Survives Against Fate");
     }
 
     #[test]
