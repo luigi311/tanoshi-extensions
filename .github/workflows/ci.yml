@@ -35,13 +35,24 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - uses: houseabsolute/actions-rust-cross@v0
+      - name: Cargo build
+        uses: houseabsolute/actions-rust-cross@v0
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           target: ${{ matrix.platform.target }} 
           command: build
           args: "--release"
       
+      # Test only on linux once
+      - name: Cargo test
+        uses: houseabsolute/actions-rust-cross@v0
+        if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: ${{ matrix.platform.target }} 
+          command: test
+          args: "--release"
+
       - name: Generate json
         if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
         run: |
