@@ -1,0 +1,6 @@
+[toolchain]
+# Changing channel requires changes to
+# 1st https://github.com/luigi311/tanoshi-builder
+# 2nd https://github.com/luigi311/tanoshi
+# 3rd https://github.com/luigi311/tanoshi-extensions
+channel = "1.79.0"
