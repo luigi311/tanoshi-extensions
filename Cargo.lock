@@ -24,15 +24,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08f9b8508dccb7687a1d6c4ce66b2b0ecef467c94667de27d8d7fe1f8d2a9cdc"
 
 [[package]]
-name = "asurascans"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "tanoshi-lib",
- "wpmangastream",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -503,6 +494,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "manhuafast"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "madara",
+ "tanoshi-lib",
+]
+
+[[package]]
 name = "manhwa18cc"
 version = "0.2.0"
 dependencies = [
@@ -569,6 +569,25 @@ name = "new_debug_unreachable"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
+
+[[package]]
+name = "nhentai"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "fancy-regex",
+ "lazy_static",
+ "log",
+ "phf 0.10.1",
+ "scraper",
+ "serde",
+ "serde-aux",
+ "serde_json",
+ "serde_qs",
+ "tanoshi-lib",
+ "ureq",
+]
 
 [[package]]
 name = "nodrop"
@@ -991,6 +1010,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-aux"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a77223b653fa95f3f9864f3eb25b93e4ed170687eb42d85b6b98af21d5e1de"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1141,6 +1171,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "three_sixty_five_manga"
+version = "0.2.1"
+dependencies = [
+ "anyhow",
+ "madara",
+ "tanoshi-lib",
 ]
 
 [[package]]
