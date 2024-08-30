@@ -3,6 +3,7 @@ use chrono::NaiveDateTime;
 use fancy_regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, MangaInfo};
+use networking::Agent;
 
 fn get_title(el: &ElementRef, selector: &str, attr: &str) -> Option<String> {
     let selector = Selector::parse(selector).ok()?;
@@ -80,8 +81,8 @@ pub fn parse_search_manga_list(
     Ok(manga)
 }
 
-pub fn get_manga_detail(path: &str, source_id: i64) -> Result<MangaInfo> {
-    let body = ureq::get(&format!("https://chapmanganato.com{path}"))
+pub fn get_manga_detail(path: &str, source_id: i64, client: &Agent) -> Result<MangaInfo> {
+    let body = client.get(&format!("https://chapmanganato.com{path}"))
         .call()?
         .into_string()?;
 
@@ -135,8 +136,8 @@ pub fn get_manga_detail(path: &str, source_id: i64) -> Result<MangaInfo> {
     })
 }
 
-pub fn get_chapters(path: &str, source_id: i64) -> Result<Vec<ChapterInfo>> {
-    let body = ureq::get(&format!("https://chapmanganato.com{path}"))
+pub fn get_chapters(path: &str, source_id: i64, client: &Agent) -> Result<Vec<ChapterInfo>> {
+    let body = client.get(&format!("https://chapmanganato.com{path}"))
         .call()?
         .into_string()?;
 

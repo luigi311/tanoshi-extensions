@@ -6,6 +6,7 @@ use anyhow::{anyhow, bail, Result};
 use fancy_regex::Regex;
 use scraper::{Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, Input, InputType, MangaInfo, TriState};
+use networking::Agent;
 
 use crate::dto::{CurChapter, Dir, DirChapter};
 
@@ -215,8 +216,8 @@ pub fn get_filter_list() -> Vec<Input> {
     FILTER_LIST.clone()
 }
 
-pub fn get_all_manga(url: &str) -> Result<Vec<Dir>> {
-    let html = ureq::get(&format!("{}/search", url))
+pub fn get_all_manga(url: &str, client: &Agent) -> Result<Vec<Dir>> {
+    let html = client.get(&format!("{}/search", url))
         .call()?
         .into_string()?;
     let start_index = html
@@ -268,12 +269,12 @@ fn sort_year_released(dirs: &mut Vec<Dir>, asc: bool) {
     });
 }
 
-pub fn get_popular_manga(source_id: i64, url: &str, mut page: i64) -> Result<Vec<MangaInfo>> {
+pub fn get_popular_manga(source_id: i64, url: &str, mut page: i64, client: &Agent) -> Result<Vec<MangaInfo>> {
     if page < 1 {
         page = 1;
     }
     let offset = (page - 1) * 20;
-    let mut dirs = get_all_manga(url)?;
+    let mut dirs = get_all_manga(url, client)?;
     sort_popular(&mut dirs, false);
 
     let manga = dirs
@@ -289,12 +290,12 @@ pub fn get_popular_manga(source_id: i64, url: &str, mut page: i64) -> Result<Vec
     Ok(manga)
 }
 
-pub fn get_latest_manga(source_id: i64, url: &str, mut page: i64) -> Result<Vec<MangaInfo>> {
+pub fn get_latest_manga(source_id: i64, url: &str, mut page: i64, client: &Agent) -> Result<Vec<MangaInfo>> {
     if page < 1 {
         page = 1;
     }
     let offset = (page - 1) * 20;
-    let mut dirs = get_all_manga(url)?;
+    let mut dirs = get_all_manga(url, client)?;
     sort_latest(&mut dirs, false);
 
     let manga = dirs
@@ -376,6 +377,7 @@ pub fn search_manga(
     mut page: i64,
     query: Option<String>,
     filters: Option<Vec<Input>>,
+    client: &Agent,
 ) -> Result<Vec<MangaInfo>> {
     if query.is_none() && filters.is_none() {
         bail!("query and filters cannot be both empty")
@@ -386,7 +388,7 @@ pub fn search_manga(
     }
 
     let offset = (page - 1) * 20;
-    let mut dirs = get_all_manga(url)?;
+    let mut dirs = get_all_manga(url, client)?;
 
     if let Some(filters) = filters {
         for filter in filters.iter() {
@@ -452,8 +454,8 @@ pub fn search_manga(
     Ok(manga)
 }
 
-pub fn get_manga_detail(source_id: i64, url: &str, path: String) -> Result<MangaInfo> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_manga_detail(source_id: i64, url: &str, path: String, client: &Agent) -> Result<MangaInfo> {
+    let body = client.get(&format!("{}{}", url, path))
         .call()?
         .into_string()?;
     let doc = Html::parse_document(&body);
@@ -543,8 +545,8 @@ fn get_ch_dirs(vm_dir: &str, index_name: &str) -> Result<Vec<DirChapter>> {
         .collect())
 }
 
-pub fn get_chapters(source_id: i64, url: &str, path: String) -> Result<Vec<ChapterInfo>> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_chapters(source_id: i64, url: &str, path: String, client: &Agent) -> Result<Vec<ChapterInfo>> {
+    let body = client.get(&format!("{}{}", url, path))
         .call()?
         .into_string()?;
     let index_name = get_index_name(&body)?;
@@ -588,8 +590,8 @@ pub fn get_chapters(source_id: i64, url: &str, path: String) -> Result<Vec<Chapt
     Ok(chapters)
 }
 
-pub fn get_pages(url: &str, path: String) -> Result<Vec<String>> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_pages(url: &str, path: String, client: &Agent) -> Result<Vec<String>> {   
+    let body = client.get(&format!("{}{}", url, path))
         .call()?
         .into_string()?;
     let index_name = get_index_name(&body)?;

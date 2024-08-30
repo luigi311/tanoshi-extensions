@@ -7,8 +7,9 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+networking = { path = "../../common/networking" }
 tanoshi-lib = "0.27.0"
 madara = { path = "../../common/madara" }
 anyhow = "1"
 scraper = "0.13"
-ureq = { version = "2", features = ["json"] }
+lazy_static = "1"

@@ -1,5 +1,8 @@
 use guyalib::{get_chapters, get_manga_detail, get_manga_list, get_pages};
-use tanoshi_lib::prelude::{Extension, Lang, PluginRegistrar};
+use tanoshi_lib::prelude::{Extension, Input, Lang, PluginRegistrar};
+use lazy_static::lazy_static;
+use networking::{Agent, build_ureq_agent};
+use std::env;
 
 const ID: i64 = 7;
 const NAME: &str = "Guya";
@@ -11,10 +14,44 @@ fn register(registrar: &mut dyn PluginRegistrar) {
     registrar.register_function(Box::new(Guya::default()));
 }
 
-#[derive(Default)]
-pub struct Guya;
+lazy_static! {
+    static ref PREFERENCES: Vec<Input> = vec![];
+}
+
+pub struct Guya {
+    preferences: Vec<Input>,
+    client: Agent,
+}
+
+impl Default for Guya {
+    fn default() -> Self {
+        Self {
+            preferences: PREFERENCES.clone(),
+            client: build_ureq_agent(None, None),   
+        }
+    }
+}
 
 impl Extension for Guya {
+    fn set_preferences(
+        &mut self,
+        preferences: Vec<Input>,
+    ) -> anyhow::Result<()> {
+        for input in preferences {
+            for pref in self.preferences.iter_mut() {
+                if input.eq(pref) {
+                    *pref = input.clone();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
+        Ok(self.preferences.clone())
+    }
+
     fn get_source_info(&self) -> tanoshi_lib::prelude::SourceInfo {
         tanoshi_lib::prelude::SourceInfo {
             id: ID,
@@ -31,20 +68,20 @@ impl Extension for Guya {
         &self,
         _page: i64,
     ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        get_manga_list(URL, ID)
+        get_manga_list(URL, ID, &self.client)
     }
 
     fn get_latest_manga(&self, _page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        get_manga_list(URL, ID)
+        get_manga_list(URL, ID, &self.client)
     }
 
     fn search_manga(
         &self,
         _page: i64,
         query: Option<String>,
-        _filters: Option<Vec<tanoshi_lib::prelude::Input>>,
+        _filters: Option<Vec<Input>>,
     ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        let manga = get_manga_list(URL, ID)?;
+        let manga = get_manga_list(URL, ID, &self.client)?;
 
         if let Some(query) = query {
             Ok(manga
@@ -57,15 +94,15 @@ impl Extension for Guya {
     }
 
     fn get_manga_detail(&self, path: String) -> anyhow::Result<tanoshi_lib::prelude::MangaInfo> {
-        get_manga_detail(URL, &path, ID)
+        get_manga_detail(URL, &path, ID, &self.client)
     }
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<tanoshi_lib::prelude::ChapterInfo>> {
-        get_chapters(URL, &path, ID)
+        get_chapters(URL, &path, ID, &self.client)
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        get_pages(URL, &path)
+        get_pages(URL, &path, &self.client)
     }
 }
 

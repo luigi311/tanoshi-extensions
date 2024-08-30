@@ -7,6 +7,8 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+networking = { path = "../../common/networking" }
 nepnep = { path = "../../common/nepnep" }
 tanoshi-lib = "0.27.0"
 anyhow = "1"
+lazy_static = "1"

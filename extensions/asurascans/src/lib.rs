@@ -1,8 +1,11 @@
 use anyhow::bail;
-use tanoshi_lib::prelude::{Extension, Lang, PluginRegistrar, SourceInfo};
+use tanoshi_lib::prelude::{Extension, Input, Lang, PluginRegistrar, SourceInfo};
 use wpmangastream::{
     get_chapters, get_latest_manga, get_manga_detail, get_pages, get_popular_manga, search_manga,
 };
+use lazy_static::lazy_static;
+use networking::{Agent, build_ureq_agent};
+use std::env;
 
 tanoshi_lib::export_plugin!(register);
 
@@ -10,14 +13,48 @@ fn register(registrar: &mut dyn PluginRegistrar) {
     registrar.register_function(Box::new(AsuraScans::default()));
 }
 
+lazy_static! {
+    static ref PREFERENCES: Vec<Input> = vec![];
+}
+
 const ID: i64 = 25;
 const NAME: &str = "AsuraScans";
 const URL: &str = "https://asuratoon.com";
 
-#[derive(Default)]
-pub struct AsuraScans;
+pub struct AsuraScans {
+    preferences: Vec<Input>,
+    client: Agent,
+}
+
+impl Default for AsuraScans {
+    fn default() -> Self {
+        Self {
+            preferences: PREFERENCES.clone(),
+            client: build_ureq_agent(None, None),
+        }
+    }
+}
 
 impl Extension for AsuraScans {
+    fn set_preferences(
+        &mut self,
+        preferences: Vec<Input>,
+    ) -> anyhow::Result<()> {
+        for input in preferences {
+            for pref in self.preferences.iter_mut() {
+                if input.eq(pref) {
+                    *pref = input.clone();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
+        Ok(self.preferences.clone())
+    }
+    
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,
@@ -31,36 +68,36 @@ impl Extension for AsuraScans {
     }
 
     fn get_popular_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        get_popular_manga(URL, ID, page)
+        get_popular_manga(URL, ID, page, &self.client)
     }
 
     fn get_latest_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        get_latest_manga(URL, ID, page)
+        get_latest_manga(URL, ID, page, &self.client)
     }
 
     fn search_manga(
         &self,
         page: i64,
         query: Option<String>,
-        _: Option<Vec<tanoshi_lib::prelude::Input>>,
+        _: Option<Vec<Input>>,
     ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
         if let Some(query) = query {
-            search_manga(URL, ID, page, &query)
+            search_manga(URL, ID, page, &query, &self.client)
         } else {
             bail!("query can not be empty")
         }
     }
 
     fn get_manga_detail(&self, path: String) -> anyhow::Result<tanoshi_lib::prelude::MangaInfo> {
-        get_manga_detail(URL, &path, ID)
+        get_manga_detail(URL, &path, ID, &self.client)
     }
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<tanoshi_lib::prelude::ChapterInfo>> {
-        get_chapters(URL, &path, ID)
+        get_chapters(URL, &path, ID, &self.client)
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        get_pages(URL, &path)
+        get_pages(URL, &path, &self.client)
     }
 }
 

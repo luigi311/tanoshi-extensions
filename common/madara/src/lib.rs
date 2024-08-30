@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use chrono::NaiveDateTime;
 use scraper::{ElementRef, Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, MangaInfo};
+use networking::Agent;
 
 fn get_data_src(el: &ElementRef) -> Option<String> {
     el.value()
@@ -68,25 +69,28 @@ pub fn parse_manga_list(
     Ok(manga)
 }
 
-pub fn get_latest_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<MangaInfo>> {
-    let body = ureq::post(&format!("{}/wp-admin/admin-ajax.php", url))
+pub fn get_latest_manga(url: &str, source_id: i64, page: i64, client: &Agent) -> Result<Vec<MangaInfo>> {
+    let form: &[(&str, &str)] = &[
+        ("action", "madara_load_more"),
+        ("page", &(page - 1).to_string()),
+        ("template", "madara-core/content/content-archive"),
+        ("vars[orderby]", "meta_value_num"),
+        ("vars[paged]", "1"),
+        ("vars[posts_per_page]", "20"),
+        ("vars[post_type]", "wp-manga"),
+        ("vars[post_status]", "publish"),
+        ("vars[meta_key]", "_latest_update"),
+        ("vars[order]", "desc"),
+        ("vars[sidebar]", "right"),
+        ("vars[manga_archives_item_layout]", "big_thumbnail"),
+        ("vars[meta_query][0][key]", "_wp_manga_chapter_type"),
+        ("vars[meta_query][0][value]", "manga"),
+    ];
+    
+    let body = client.post(&format!("{}/wp-admin/admin-ajax.php", url))
         .set("Referer", url)
-        .send_form(&[
-            ("action", "madara_load_more"),
-            ("page", &(page - 1).to_string()),
-            ("template", "madara-core/content/content-archive"),
-            ("vars[orderby]", "meta_value_num"),
-            ("vars[paged]", "1"),
-            ("vars[posts_per_page]", "20"),
-            ("vars[post_type]", "wp-manga"),
-            ("vars[post_status]", "publish"),
-            ("vars[meta_key]", "_latest_update"),
-            ("vars[order]", "desc"),
-            ("vars[sidebar]", "right"),
-            ("vars[manga_archives_item_layout]", "big_thumbnail"),
-            ("vars[meta_query][0][key]", "_wp_manga_chapter_type"),
-            ("vars[meta_query][0][value]", "manga"),
-        ])?
+        .set("X-Requested-With", "XMLHttpRequest")
+        .send_form(form)?
         .into_string()?;
 
     let selector = Selector::parse("div.page-item-detail")
@@ -95,25 +99,28 @@ pub fn get_latest_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<Mang
     parse_manga_list(url, source_id, &body, &selector, false)
 }
 
-pub fn get_popular_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<MangaInfo>> {
-    let body = ureq::post(&format!("{}/wp-admin/admin-ajax.php", url))
+pub fn get_popular_manga(url: &str, source_id: i64, page: i64, client: &Agent) -> Result<Vec<MangaInfo>> {
+    let form: &[(&str, &str)] = &[
+        ("action", "madara_load_more"),
+        ("page", &(page - 1).to_string()),
+        ("template", "madara-core/content/content-archive"),
+        ("vars[orderby]", "meta_value_num"),
+        ("vars[paged]", "1"),
+        ("vars[posts_per_page]", "20"),
+        ("vars[post_type]", "wp-manga"),
+        ("vars[post_status]", "publish"),
+        ("vars[meta_key]", "_wp_manga_views"),
+        ("vars[order]", "desc"),
+        ("vars[sidebar]", "full"),
+        ("vars[manga_archives_item_layout]", "big_thumbnail"),
+        ("vars[meta_query][0][key]", "_wp_manga_chapter_type"),
+        ("vars[meta_query][0][value]", "manga"),
+    ];
+    
+    let body = client.post(&format!("{}/wp-admin/admin-ajax.php", url))
         .set("Referer", url)
-        .send_form(&[
-            ("action", "madara_load_more"),
-            ("page", &(page - 1).to_string()),
-            ("template", "madara-core/content/content-archive"),
-            ("vars[orderby]", "meta_value_num"),
-            ("vars[paged]", "1"),
-            ("vars[posts_per_page]", "20"),
-            ("vars[post_type]", "wp-manga"),
-            ("vars[post_status]", "publish"),
-            ("vars[meta_key]", "_wp_manga_views"),
-            ("vars[order]", "desc"),
-            ("vars[sidebar]", "full"),
-            ("vars[manga_archives_item_layout]", "big_thumbnail"),
-            ("vars[meta_query][0][key]", "_wp_manga_chapter_type"),
-            ("vars[meta_query][0][value]", "manga"),
-        ])?
+        .set("X-Requested-With", "XMLHttpRequest")
+        .send_form(form)?
         .into_string()?;
 
     let selector = Selector::parse("div.page-item-detail")
@@ -127,8 +134,9 @@ pub fn search_manga_old(
     source_id: i64,
     page: i64,
     query: &str,
+    client: &Agent
 ) -> Result<Vec<MangaInfo>> {
-    let body = ureq::get(&format!("{}/search?q={}&page={}", url, query, page))
+    let body = client.get(&format!("{}/search?q={}&page={}", url, query, page))
         .call()?
         .into_string()?;
 
@@ -144,24 +152,28 @@ pub fn search_manga(
     page: i64,
     query: &str,
     is_selector_url: bool,
+    client: &Agent
 ) -> Result<Vec<MangaInfo>> {
-    let body = ureq::post(&format!("{}/wp-admin/admin-ajax.php", url))
+    let form: &[(&str, &str)] = &[
+        ("action", "madara_load_more"),
+        ("vars[s]", query),
+        ("template", "madara-core/content/content-search"),
+        ("vars[paged]", "1"),
+        ("vars[template]", "archive"),
+        ("vars[post_type]", "wp-manga"),
+        ("vars[post_status]", "publish"),
+        ("vars[sidebar]", "right"),
+        ("vars[manga_archives_item_layout]", "big_thumbnail"),
+        ("vars[posts_per_page]", "20"),
+        ("vars[meta_query][0][key]", "_wp_manga_chapter_type"),
+        ("vars[meta_query][0][value]", "manga"),
+        ("page", &(page - 1).to_string()),
+    ];
+    
+    let body = client.post(&format!("{}/wp-admin/admin-ajax.php", url))
         .set("Referer", url)
-        .send_form(&[
-            ("action", "madara_load_more"),
-            ("vars[s]", query),
-            ("template", "madara-core/content/content-search"),
-            ("vars[paged]", "1"),
-            ("vars[template]", "archive"),
-            ("vars[post_type]", "wp-manga"),
-            ("vars[post_status]", "publish"),
-            ("vars[sidebar]", "right"),
-            ("vars[manga_archives_item_layout]", "big_thumbnail"),
-            ("vars[posts_per_page]", "20"),
-            ("vars[meta_query][0][key]", "_wp_manga_chapter_type"),
-            ("vars[meta_query][0][value]", "manga"),
-            ("page", &(page - 1).to_string()),
-        ])?
+        .set("X-Requested-With", "XMLHttpRequest")
+        .send_form(form)?
         .into_string()?;
 
     let selector = if is_selector_url {
@@ -174,8 +186,8 @@ pub fn search_manga(
     parse_manga_list(url, source_id, &body, &selector, is_selector_url)
 }
 
-pub fn get_manga_detail(url: &str, path: &str, source_id: i64) -> Result<MangaInfo> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_manga_detail(url: &str, path: &str, source_id: i64, client: &Agent) -> Result<MangaInfo> {
+    let body = client.get(&format!("{}{}", url, path))
         .call()?
         .into_string()?;
 
@@ -300,10 +312,8 @@ fn parse_chapters(
     Ok(chapters)
 }
 
-pub fn get_chapters_old(url: &str, path: &str, source_id: i64) -> Result<Vec<ChapterInfo>> {
-    let body = ureq::get(&format!("{}{}", url, path))
-        .set("Referer", url)
-        .set("X-Requested-With", "XMLHttpRequest")
+pub fn get_chapters_old(url: &str, path: &str, source_id: i64, client: &Agent) -> Result<Vec<ChapterInfo>> {
+    let body = client.get(&format!("{}{}", url, path))
         .call()?
         .into_string()?;
 
@@ -337,8 +347,9 @@ pub fn get_chapters(
     path: &str,
     source_id: i64,
     chapter_name_selector: Option<&str>,
+    client: &Agent
 ) -> Result<Vec<ChapterInfo>> {
-    let body = ureq::post(&format!("{}{}ajax/chapters", url, path))
+    let body = client.post(&format!("{}{}ajax/chapters", url, path))
         .set("Referer", url)
         .set("Content-Length", "0")
         .set("X-Requested-With", "XMLHttpRequest")
@@ -370,9 +381,8 @@ pub fn get_chapters(
     )
 }
 
-pub fn get_pages(url: &str, path: &str) -> Result<Vec<String>> {
-    let body = ureq::get(&format!("{}{}", url, path))
-        .set("Referer", url)
+pub fn get_pages(url: &str, path: &str, client: &Agent) -> Result<Vec<String>> {
+    let body = client.get(&format!("{}{}", url, path))
         .call()?
         .into_string()?;
 

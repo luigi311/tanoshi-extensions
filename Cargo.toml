@@ -5,6 +5,7 @@ exclude = [
     "extensions/reaperscans",
     "extensions/firstkissmanhua",
     "extensions/mmscans",
+    "extensions/tritiniascans",
 ]
 
 [profile.release]

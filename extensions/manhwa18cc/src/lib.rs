@@ -1,7 +1,10 @@
 use anyhow::{anyhow, bail};
 use madara::{get_chapters_old, get_manga_detail, parse_manga_list, search_manga_old};
 use scraper::{Html, Selector};
-use tanoshi_lib::prelude::{Extension, Lang, PluginRegistrar, SourceInfo};
+use tanoshi_lib::prelude::{Extension, Input, Lang, PluginRegistrar, SourceInfo};
+use lazy_static::lazy_static;
+use networking::{Agent, build_ureq_agent};
+use std::env;
 
 tanoshi_lib::export_plugin!(register);
 
@@ -9,14 +12,48 @@ fn register(registrar: &mut dyn PluginRegistrar) {
     registrar.register_function(Box::new(Manhwa18cc::default()));
 }
 
+lazy_static! {
+    static ref PREFERENCES: Vec<Input> = vec![];
+}
+
 const ID: i64 = 8;
 const NAME: &str = "Manhwa18cc";
 const URL: &str = "https://manhwa18.cc";
 
-#[derive(Default)]
-pub struct Manhwa18cc;
+pub struct Manhwa18cc {
+    preferences: Vec<Input>,
+    client: Agent,
+}
+
+impl Default for Manhwa18cc {
+    fn default() -> Self {
+        Self {
+            preferences: PREFERENCES.clone(),
+            client: build_ureq_agent(None, None),
+        }
+    }
+}   
 
 impl Extension for Manhwa18cc {
+    fn set_preferences(
+        &mut self,
+        preferences: Vec<Input>,
+    ) -> anyhow::Result<()> {
+        for input in preferences {
+            for pref in self.preferences.iter_mut() {
+                if input.eq(pref) {
+                    *pref = input.clone();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
+        Ok(self.preferences.clone())
+    }
+
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,
@@ -30,7 +67,7 @@ impl Extension for Manhwa18cc {
     }
 
     fn get_popular_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        let body = ureq::get(&format!("{}/webtoons/{}?orderby=latest", URL, page))
+        let body = self.client.get(&format!("{}/webtoons/{}?orderby=latest", URL, page)) 
             .call()?
             .into_string()?;
 
@@ -41,7 +78,7 @@ impl Extension for Manhwa18cc {
     }
 
     fn get_latest_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        let body = ureq::get(&format!("{}/webtoons/{}?orderby=latest", URL, page))
+        let body = self.client.get(&format!("{}/webtoons/{}?orderby=latest", URL, page))
             .call()?
             .into_string()?;
 
@@ -55,25 +92,25 @@ impl Extension for Manhwa18cc {
         &self,
         page: i64,
         query: Option<String>,
-        _: Option<Vec<tanoshi_lib::prelude::Input>>,
+        _: Option<Vec<Input>>,
     ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
         if let Some(query) = query {
-            search_manga_old(URL, ID, page, &query)
+            search_manga_old(URL, ID, page, &query,  &self.client)
         } else {
             bail!("query can not be empty")
         }
     }
 
     fn get_manga_detail(&self, path: String) -> anyhow::Result<tanoshi_lib::prelude::MangaInfo> {
-        get_manga_detail(URL, &path, ID)
+        get_manga_detail(URL, &path, ID,  &self.client)
     }
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<tanoshi_lib::prelude::ChapterInfo>> {
-        get_chapters_old(URL, &path, ID)
+        get_chapters_old(URL, &path, ID,  &self.client)
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        let body = ureq::get(&format!("{}{}", URL, path))
+        let body = self.client.get(&format!("{}{}", URL, path)) 
             .call()?
             .into_string()?;
 
