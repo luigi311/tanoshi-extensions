@@ -303,7 +303,7 @@ dependencies = [
 
 [[package]]
 name = "guya"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "guyalib",
@@ -404,7 +404,7 @@ dependencies = [
 
 [[package]]
 name = "isekaiscanmanga"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -442,7 +442,7 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "leviatanscans"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -500,7 +500,7 @@ dependencies = [
 
 [[package]]
 name = "mangadex"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "mangakakalot"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -547,7 +547,7 @@ dependencies = [
 
 [[package]]
 name = "mangalife"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -558,7 +558,7 @@ dependencies = [
 
 [[package]]
 name = "manganato"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -569,7 +569,7 @@ dependencies = [
 
 [[package]]
 name = "mangasee"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -580,7 +580,7 @@ dependencies = [
 
 [[package]]
 name = "mangatx"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -591,7 +591,7 @@ dependencies = [
 
 [[package]]
 name = "manhuafast"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -602,7 +602,7 @@ dependencies = [
 
 [[package]]
 name = "manhwa18cc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
@@ -684,7 +684,7 @@ checksum = "e4a24736216ec316047a1fc4252e27dabb04218aa4a3f37c6e7ddbf1f9782b54"
 
 [[package]]
 name = "nhentai"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1412,7 +1412,7 @@ dependencies = [
 
 [[package]]
 name = "three_sixty_five_manga"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "lazy_static",
