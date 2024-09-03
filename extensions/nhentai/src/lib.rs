@@ -300,7 +300,7 @@ impl Extension for NHentai {
     }
 
     fn get_manga_detail(&self, path: String) -> anyhow::Result<tanoshi_lib::prelude::MangaInfo> {
-        let url = format!("{}{}/", URL, path);
+        let url = format!("{}{}", URL, path);
         // Send the request and get the response as a string
         let res = self.client.get(&url)
             .call()?
@@ -425,7 +425,7 @@ impl Extension for NHentai {
     }
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<tanoshi_lib::prelude::ChapterInfo>> {
-        let url = format!("{}{}/", URL, path);
+        let url = format!("{}{}", URL, path);
 
         // Send the request and get the response as a string
         let res = self.client.get(&url)
@@ -465,7 +465,7 @@ impl Extension for NHentai {
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        let url = format!("{}{}/", URL, path);
+        let url = format!("{}{}", URL, path);
 
         // Send the request and get the response as a string
         let res = self.client.get(&url)
