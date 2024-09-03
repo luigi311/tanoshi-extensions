@@ -63,7 +63,7 @@ jobs:
         run: |
           cargo build --release --target ${{ matrix.platform.target }}
 
-          cargo test --release --target ${{ matrix.platform.target }}
+          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test --release --target ${{ matrix.platform.target }}
 
           # Stop FlareSolverr
           docker stop flaresolverr
