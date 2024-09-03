@@ -89,7 +89,7 @@ jobs:
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
-          name: repo-${{ env.RUST_TOOLCHAIN }}-${{ matrix.platform.target }}
+          name: ${{ matrix.platform.target }}
           path: output
   
   push:
@@ -113,7 +113,6 @@ jobs:
       - name: Download dist
         uses: actions/download-artifact@v4
         with:
-          pattern: repo-${{ env.RUST_TOOLCHAIN }}
           path: repository
           merge-multiple: true
 
