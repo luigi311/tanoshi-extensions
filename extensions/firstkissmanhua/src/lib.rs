@@ -4,7 +4,7 @@ use madara::{
 };
 use tanoshi_lib::prelude::{Extension, Input, Lang, PluginRegistrar, SourceInfo};
 use lazy_static::lazy_static;
-use networking::{Agent, build_ureq_agent};
+use networking::{Agent, build_ureq_agent, build_flaresolverr_client};
 use std::env;
 
 tanoshi_lib::export_plugin!(register);
@@ -28,10 +28,17 @@ pub struct FirstKissManhua {
 
 impl Default for FirstKissManhua {
     fn default() -> Self {
-        Self {
+        let mut instance = Self {
             preferences: PREFERENCES.clone(),
             client: build_ureq_agent(None, None),
+        };
+
+        // If flaresolverr_url is set, build the client with it
+        if let Ok(flaresolverr_url) = env::var("FLARESOLVERR_URL") {
+            instance.client = build_flaresolverr_client(URL, &flaresolverr_url).unwrap();
         }
+
+        instance
     }
 }
 
