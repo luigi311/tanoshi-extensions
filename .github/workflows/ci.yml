@@ -33,7 +33,7 @@ jobs:
             extension: dll
     runs-on: ${{ matrix.platform.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Cross build
         if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' }}
@@ -63,7 +63,7 @@ jobs:
         run: |
           cargo build --release --target ${{ matrix.platform.target }}
 
-          ALL_PROXY=http://localhost:8191 cargo test --release --target ${{ matrix.platform.target }}
+          cargo test --release --target ${{ matrix.platform.target }}
 
           # Stop FlareSolverr
           docker stop flaresolverr
@@ -86,9 +86,9 @@ jobs:
         run: cd output/${{ matrix.platform.target }}/ && for f in *.${{ matrix.platform.extension }};do mv $f ${f#lib}; done; cd ../..
       
       - name: Upload dist
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: repo-${{ env.RUST_TOOLCHAIN }}
+          name: repo-${{ env.RUST_TOOLCHAIN }}-${{ matrix.platform.target }}
           path: output
   
   push:
@@ -97,7 +97,7 @@ jobs:
     needs:
       - build
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Clone repo
         run: |
@@ -110,10 +110,11 @@ jobs:
           cd ..
           
       - name: Download dist
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: repo-${{ env.RUST_TOOLCHAIN }}
+          pattern: repo-${{ env.RUST_TOOLCHAIN }}
           path: repository
+          merge-multiple: true
 
       - name: Commit files
         run: |
@@ -125,7 +126,7 @@ jobs:
           cd ..
 
       - name: Git Commit and Push
-        uses: ad-m/github-push-action@v0.6.0
+        uses: ad-m/github-push-action@v0.8.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           branch: ${{ env.RUST_TOOLCHAIN }}
