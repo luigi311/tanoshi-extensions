@@ -3,11 +3,12 @@ use std::collections::HashMap;
 
 use anyhow::Result;
 use tanoshi_lib::prelude::*;
+use networking::Agent;
 
 use crate::dto::{Detail, Series};
 
-pub fn get_manga_list(url: &str, source_id: i64) -> Result<Vec<MangaInfo>> {
-    let results: HashMap<String, Detail> = ureq::get(&format!("{}/api/get_all_series", url))
+pub fn get_manga_list(url: &str, source_id: i64, client: &Agent) -> Result<Vec<MangaInfo>> {   
+    let results: HashMap<String, Detail> = client.get(&format!("{}/api/get_all_series", url))
         .call()?
         .into_json()?;
 
@@ -30,8 +31,8 @@ pub fn get_manga_list(url: &str, source_id: i64) -> Result<Vec<MangaInfo>> {
     Ok(manga)
 }
 
-pub fn get_manga_detail(url: &str, path: &str, source_id: i64) -> Result<MangaInfo> {
-    let series: Series = ureq::get(&format!("{}{}", url, path)).call()?.into_json()?;
+pub fn get_manga_detail(url: &str, path: &str, source_id: i64, client: &Agent) -> Result<MangaInfo> {
+    let series: Series = client.get(&format!("{}{}", url, path)).call()?.into_json()?;
 
     Ok(MangaInfo {
         source_id,
@@ -45,8 +46,8 @@ pub fn get_manga_detail(url: &str, path: &str, source_id: i64) -> Result<MangaIn
     })
 }
 
-pub fn get_chapters(url: &str, path: &str, source_id: i64) -> Result<Vec<ChapterInfo>> {
-    let series: Series = ureq::get(&format!("{}{}", url, path)).call()?.into_json()?;
+pub fn get_chapters(url: &str, path: &str, source_id: i64, client: &Agent) -> Result<Vec<ChapterInfo>> {
+    let series: Series = client.get(&format!("{}{}", url, path)).call()?.into_json()?;
 
     let mut chapters = vec![];
 
@@ -72,9 +73,9 @@ pub fn get_chapters(url: &str, path: &str, source_id: i64) -> Result<Vec<Chapter
     Ok(chapters)
 }
 
-pub fn get_pages(url: &str, path: &str) -> Result<Vec<String>> {
+pub fn get_pages(url: &str, path: &str, client: &Agent) -> Result<Vec<String>> {   
     let split: Vec<_> = path.rsplitn(2, '/').collect();
-    let series: Series = ureq::get(&format!("{}{}", url, split[1]))
+    let series: Series = client.get(&format!("{}{}", url, split[1]))
         .call()?
         .into_json()?;
 

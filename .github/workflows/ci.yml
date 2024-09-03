@@ -52,6 +52,7 @@ jobs:
             -p 8191:8191 \
             -e LOG_LEVEL=info \
             --restart unless-stopped \
+            --network=host \
             ghcr.io/flaresolverr/flaresolverr:latest
           
           # Sleep 5 seconds to wait for FlareSolverr to start
@@ -63,7 +64,7 @@ jobs:
         run: |
           cargo build --release --target ${{ matrix.platform.target }}
 
-          cargo test --release --target ${{ matrix.platform.target }}
+          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test --release --target ${{ matrix.platform.target }}
 
           # Stop FlareSolverr
           docker stop flaresolverr

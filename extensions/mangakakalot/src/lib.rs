@@ -2,7 +2,10 @@ use anyhow::bail;
 use mangakakalot_common::{
     get_chapters, get_manga_detail, get_pages, parse_manga_list, parse_search_manga_list,
 };
-use tanoshi_lib::prelude::{Extension, Lang, PluginRegistrar, SourceInfo};
+use tanoshi_lib::prelude::{Extension, Input, Lang, PluginRegistrar, SourceInfo};
+use lazy_static::lazy_static;
+use networking::{Agent, build_ureq_agent};
+use std::env;
 
 tanoshi_lib::export_plugin!(register);
 
@@ -10,14 +13,48 @@ fn register(registrar: &mut dyn PluginRegistrar) {
     registrar.register_function(Box::new(Mangakakalot::default()));
 }
 
+lazy_static! {
+    static ref PREFERENCES: Vec<Input> = vec![];
+}
+
 const ID: i64 = 10;
 const NAME: &str = "Mangakakalot";
 const URL: &str = "https://mangakakalot.com";
 
-#[derive(Default)]
-pub struct Mangakakalot;
+pub struct Mangakakalot {
+    preferences: Vec<Input>,
+    client: Agent,
+}
+
+impl Default for Mangakakalot {
+    fn default() -> Self {
+        Self {
+            preferences: PREFERENCES.clone(),
+            client: build_ureq_agent(None, None),
+        }
+    }
+}
 
 impl Extension for Mangakakalot {
+    fn set_preferences(
+        &mut self,
+        preferences: Vec<Input>,
+    ) -> anyhow::Result<()> {
+        for input in preferences {
+            for pref in self.preferences.iter_mut() {
+                if input.eq(pref) {
+                    *pref = input.clone();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
+        Ok(self.preferences.clone())
+    }
+
     fn get_source_info(&self) -> tanoshi_lib::prelude::SourceInfo {
         SourceInfo {
             id: ID,
@@ -31,7 +68,7 @@ impl Extension for Mangakakalot {
     }
 
     fn get_popular_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        let body = ureq::get(&format!(
+        let body = self.client.get(&format!(
             "{URL}/manga_list?type=topview&category=all&state=all&page={page}",
         ))
         .call()?
@@ -39,8 +76,8 @@ impl Extension for Mangakakalot {
         parse_manga_list(ID, &body, ".list-truyen-item-wrap")
     }
 
-    fn get_latest_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
-        let body = ureq::get(&format!(
+    fn get_latest_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {        
+        let body = self.client.get(&format!(
             "{URL}/manga_list?type=latest&category=all&state=all&page={page}",
         ))
         .call()?
@@ -52,10 +89,10 @@ impl Extension for Mangakakalot {
         &self,
         page: i64,
         query: Option<String>,
-        _: Option<Vec<tanoshi_lib::prelude::Input>>,
-    ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
+        _: Option<Vec<Input>>,
+    ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {       
         if let Some(query) = query {
-            let body = ureq::get(&format!(
+            let body = self.client.get(&format!(
                 "{URL}/search/story/{}?page={page}",
                 query.replace(" ", "_").to_lowercase()
             ))
@@ -68,15 +105,15 @@ impl Extension for Mangakakalot {
     }
 
     fn get_manga_detail(&self, path: String) -> anyhow::Result<tanoshi_lib::prelude::MangaInfo> {
-        get_manga_detail(&path, ID)
+        get_manga_detail(&path, ID, &self.client)
     }
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<tanoshi_lib::prelude::ChapterInfo>> {
-        get_chapters(&path, ID)
+        get_chapters(&path, ID, &self.client)
     }
 
-    fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        let body = ureq::get(&format!("https://chapmanganato.com{path}"))
+    fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {        
+        let body = self.client.get(&format!("https://chapmanganato.com{path}"))
             .call()?
             .into_string()?;
         get_pages(&body)

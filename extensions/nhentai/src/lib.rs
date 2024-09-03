@@ -5,8 +5,9 @@ use scraper::{Html, Selector};
 use tanoshi_lib::prelude::{
     ChapterInfo, Extension, Input, InputType, Lang, MangaInfo, PluginRegistrar,
 };
-
 use lazy_static::lazy_static;
+use networking::{Agent, build_ureq_agent, build_flaresolverr_client};
+use std::env;
 
 pub static ID: i64 = 6;
 pub static NAME: &str = "nhentai";
@@ -76,20 +77,28 @@ lazy_static! {
         name: "Blacklist Tag".to_string(),
         state: None
     };
+    
     static ref PREFERENCES: Vec<Input> = vec![LANGUAGE_SELECT.clone(), BLACKLIST_TAG.clone()];
 }
 
 pub struct NHentai {
-    client: ureq::Agent,
     preferences: Vec<Input>,
+    client: Agent,
 }
 
 impl Default for NHentai {
     fn default() -> Self {
-        Self {
-            client: ureq::AgentBuilder::new().redirects(5).build(),
+        let mut instance = Self {
             preferences: PREFERENCES.clone(),
+            client: build_ureq_agent(None, None),
+        };
+
+        // If flaresolverr_url is set, build the client with it
+        if let Ok(flaresolverr_url) = env::var("FLARESOLVERR_URL") {
+            instance.client = build_flaresolverr_client(URL, &flaresolverr_url).unwrap();
         }
+
+        instance
     }
 }
 
@@ -174,9 +183,12 @@ impl NHentai {
         query_str
     }
 
-    fn get_manga_list(&self, url: &str) -> Result<Vec<MangaInfo>> {
-        let res = self.client.get(&url).call()?.into_string()?;
-
+    fn get_manga_list(&self, url: &str) -> Result<Vec<MangaInfo>> {       
+        // Send the request and get the response as a string
+        let res = self.client.get(&url)
+            .call()?
+            .into_string()?;
+        
         let document = Html::parse_document(&res);
         let gallery_selector =
             Selector::parse(".gallery").map_err(|e| anyhow!("failed to parse selector: {e:?}"))?;
@@ -228,21 +240,9 @@ impl NHentai {
 }
 
 impl Extension for NHentai {
-    fn get_source_info(&self) -> tanoshi_lib::prelude::SourceInfo {
-        tanoshi_lib::prelude::SourceInfo {
-            id: ID,
-            name: "NHentai".to_string(),
-            url: URL.to_string(),
-            version: env!("CARGO_PKG_VERSION"),
-            icon: "https://static.nhentai.net/img/logo.090da3be7b51.svg",
-            languages: Lang::Multi(vec!["en".to_string(), "jp".to_string(), "ch".to_string()]),
-            nsfw: true,
-        }
-    }
-
     fn set_preferences(
         &mut self,
-        preferences: Vec<tanoshi_lib::prelude::Input>,
+        preferences: Vec<Input>,
     ) -> anyhow::Result<()> {
         for input in preferences {
             for pref in self.preferences.iter_mut() {
@@ -253,6 +253,22 @@ impl Extension for NHentai {
         }
 
         Ok(())
+    }
+
+    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
+        Ok(self.preferences.clone())
+    }
+
+    fn get_source_info(&self) -> tanoshi_lib::prelude::SourceInfo {
+        tanoshi_lib::prelude::SourceInfo {
+            id: ID,
+            name: "NHentai".to_string(),
+            url: URL.to_string(),
+            version: env!("CARGO_PKG_VERSION"),
+            icon: "https://static.nhentai.net/img/logo.090da3be7b51.svg",
+            languages: Lang::Multi(vec!["en".to_string(), "jp".to_string(), "ch".to_string()]),
+            nsfw: true,
+        }
     }
 
     fn get_popular_manga(&self, page: i64) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
@@ -270,7 +286,7 @@ impl Extension for NHentai {
         &self,
         page: i64,
         query: Option<String>,
-        filters: Option<Vec<tanoshi_lib::prelude::Input>>,
+        filters: Option<Vec<Input>>,
     ) -> anyhow::Result<Vec<tanoshi_lib::prelude::MangaInfo>> {
         let url = if filters.is_some() {
             format!("{URL}/search/?q={}&page={page}", self.query(filters))
@@ -284,9 +300,11 @@ impl Extension for NHentai {
     }
 
     fn get_manga_detail(&self, path: String) -> anyhow::Result<tanoshi_lib::prelude::MangaInfo> {
-        let url = format!("{}{}/", URL, path);
-
-        let res = self.client.get(&url).call()?.into_string()?;
+        let url = format!("{}{}", URL, path);
+        // Send the request and get the response as a string
+        let res = self.client.get(&url)
+            .call()?
+            .into_string()?;
 
         let document = Html::parse_document(&res);
         let gallery_id_selector = Selector::parse("h3[id=\"gallery_id\"]")
@@ -407,9 +425,13 @@ impl Extension for NHentai {
     }
 
     fn get_chapters(&self, path: String) -> anyhow::Result<Vec<tanoshi_lib::prelude::ChapterInfo>> {
-        let url = format!("{}{}/", URL, path);
+        let url = format!("{}{}", URL, path);
 
-        let res = self.client.get(&url).call()?.into_string()?;
+        // Send the request and get the response as a string
+        let res = self.client.get(&url)
+            .call()?
+            .into_string()?;
+
         let document = Html::parse_document(&res);
         let scanlator_selector = Selector::parse("a[href^=\"/group/\"] > .name")
             .map_err(|e| anyhow!("failed to parse selector: {e:?}"))?;
@@ -443,9 +465,12 @@ impl Extension for NHentai {
     }
 
     fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
-        let url = format!("{}{}/", URL, path);
+        let url = format!("{}{}", URL, path);
 
-        let res = self.client.get(&url).call()?.into_string()?;
+        // Send the request and get the response as a string
+        let res = self.client.get(&url)
+            .call()?
+            .into_string()?;
 
         let document = Html::parse_document(&res);
         let page_selector = Selector::parse(".thumb-container > .gallerythumb > img")
@@ -472,12 +497,8 @@ impl Extension for NHentai {
         std::collections::HashMap::new()
     }
 
-    fn filter_list(&self) -> Vec<tanoshi_lib::prelude::Input> {
+    fn filter_list(&self) -> Vec<Input> {
         FILTER_LIST.clone()
-    }
-
-    fn get_preferences(&self) -> anyhow::Result<Vec<tanoshi_lib::prelude::Input>> {
-        Ok(self.preferences.clone())
     }
 }
 
@@ -485,19 +506,7 @@ impl Extension for NHentai {
 mod test {
     use super::*;
 
-    #[test]
-    fn test_get_popular_manga() {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
-        let nhentai = NHentai::default();
-        let res = nhentai.get_popular_manga(1).unwrap();
-        assert!(!res.is_empty());
-    }
-
-    #[test]
-    fn test_get_latest_manga() {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
+    fn create_test_instance() -> NHentai {
         let preferences: Vec<Input> = vec![
             Input::Text {
                 name: "Blacklist Tag".to_string(),
@@ -514,10 +523,28 @@ mod test {
                 state: Some(1),
             },
         ];
-        let mut nhentai = NHentai::default();
+
+        let mut nhentai: NHentai = NHentai::default();
+        
         nhentai.set_preferences(preferences).unwrap();
-        let preferences = nhentai.get_preferences().unwrap();
-        println!("{preferences:?}");
+
+        nhentai
+    }
+
+    #[test]
+    fn test_get_popular_manga() {
+        let nhentai: NHentai = create_test_instance();
+
+        let res = nhentai.get_popular_manga(1).unwrap();
+        assert!(!res.is_empty());
+    }
+
+    #[test]
+    fn test_get_latest_manga() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+
+        let nhentai: NHentai = create_test_instance();
+
         let res = nhentai.get_latest_manga(1).unwrap();
         assert!(!res.is_empty());
     }
@@ -526,7 +553,8 @@ mod test {
     fn test_search_manga() {
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        let nhentai = NHentai::default();
+        let nhentai: NHentai = create_test_instance();
+
         let res = nhentai
             .search_manga(1, Some("azur lane".to_string()), None)
             .unwrap();
@@ -535,9 +563,10 @@ mod test {
 
     #[test]
     fn test_search_manga_filter() {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(3));
 
-        let nhentai = NHentai::default();
+        let nhentai: NHentai = create_test_instance();
+
         let mut filters = nhentai.filter_list();
         for filter in filters.iter_mut() {
             if SORT_FILTER.eq(filter) {
@@ -560,9 +589,8 @@ mod test {
 
     #[test]
     fn test_get_manga_detail() {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        let nhentai: NHentai = create_test_instance();
 
-        let nhentai = NHentai::default();
         let res = nhentai.get_manga_detail("/g/385965".to_string()).unwrap();
 
         assert_eq!(res.title, "Lady, Maid ni datsu");
@@ -570,9 +598,10 @@ mod test {
 
     #[test]
     fn test_get_chapters() {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(1));
 
-        let nhentai = NHentai::default();
+        let nhentai: NHentai = create_test_instance();
+
         let res = nhentai.get_chapters("/g/385965".to_string()).unwrap();
         assert!(!res.is_empty());
     }
@@ -581,7 +610,8 @@ mod test {
     fn test_get_pages() {
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        let nhentai = NHentai::default();
+        let nhentai: NHentai = create_test_instance();
+
         let res = nhentai.get_pages("/g/385965".to_string()).unwrap();
         assert!(!res.is_empty());
         let re = Regex::new(r"https://i\d*.nhentai.net/galleries/2099700/1.jpg").unwrap();

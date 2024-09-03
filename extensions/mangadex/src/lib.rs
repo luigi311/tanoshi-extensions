@@ -9,13 +9,19 @@ use anyhow::{anyhow, bail, Result};
 use dto::ResultsAtHome;
 use fancy_regex::Regex;
 use tanoshi_lib::prelude::*;
-
 use tanoshi_lib::extensions::PluginRegistrar;
+use lazy_static::lazy_static;
+use networking::{Agent, build_ureq_agent};
+use std::env;
 
 tanoshi_lib::export_plugin!(register);
 
 fn register(registrar: &mut dyn PluginRegistrar) {
-    registrar.register_function(Box::new(Mangadex {}));
+    registrar.register_function(Box::new(Mangadex::default()));
+}
+
+lazy_static! {
+    static ref PREFERENCES: Vec<Input> = vec![];
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -24,8 +30,19 @@ pub static ID: i64 = 2;
 pub static NAME: &str = "Mangadex";
 pub static URL: &str = "https://api.mangadex.org";
 
-#[derive(Default)]
-pub struct Mangadex;
+pub struct Mangadex {
+    preferences: Vec<Input>,
+    client: Agent,
+}
+
+impl Default for Mangadex {
+    fn default() -> Self {
+        Self {
+            preferences: PREFERENCES.clone(),
+            client: build_ureq_agent(None, None),
+        }
+    }
+}
 
 #[must_use]
 fn remove_bbcode(string: String) -> String {
@@ -199,7 +216,7 @@ impl Mangadex {
 
         let url = format!("{}/manga?{}", URL, query.to_query_string()?);
 
-        let res: Results = ureq::get(&url).call()?.into_json()?;
+        let res: Results = self.client.get(&url).call()?.into_json()?;
         if let dto::Data::Multiple { data, .. } = res.data {
             Ok(data.into_iter().filter_map(map_result_to_manga).collect())
         } else {
@@ -209,6 +226,25 @@ impl Mangadex {
 }
 
 impl Extension for Mangadex {
+    fn set_preferences(
+        &mut self,
+        preferences: Vec<Input>,
+    ) -> anyhow::Result<()> {
+        for input in preferences {
+            for pref in self.preferences.iter_mut() {
+                if input.eq(pref) {
+                    *pref = input.clone();
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
+        Ok(self.preferences.clone())
+    }
+
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,
@@ -219,10 +255,6 @@ impl Extension for Mangadex {
             languages: Lang::All,
             nsfw: true,
         }
-    }
-
-    fn set_preferences(&mut self, _: Vec<Input>) -> anyhow::Result<()> {
-        Ok(())
     }
 
     fn get_popular_manga(&self, page: i64) -> anyhow::Result<Vec<MangaInfo>> {
@@ -261,13 +293,13 @@ impl Extension for Mangadex {
         self.get_manga_list(page, query_list)
     }
 
-    fn get_manga_detail(&self, path: String) -> anyhow::Result<MangaInfo> {
+    fn get_manga_detail(&self, path: String) -> anyhow::Result<MangaInfo> {        
         let url = format!(
             "{}{}?includes[]=author&includes[]=artist&includes[]=cover_art",
             URL, path
         );
 
-        let res: Results = ureq::get(&url).call()?.into_json()?;
+        let res: Results = self.client.get(&url).call()?.into_json()?;
         if let dto::Data::Single { data, .. } = res.data {
             map_result_to_manga(data).ok_or_else(|| anyhow!("no such manga"))
         } else {
@@ -275,13 +307,13 @@ impl Extension for Mangadex {
         }
     }
 
-    fn get_chapters(&self, path: String) -> anyhow::Result<Vec<ChapterInfo>> {
+    fn get_chapters(&self, path: String) -> anyhow::Result<Vec<ChapterInfo>> {        
         let url = format!(
             "{}{}/feed?limit=500&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&translatedLanguage[]=en&includes[]=scanlation_group",
             URL, path
         );
 
-        let res: Results = ureq::get(&url).call()?.into_json()?;
+        let res: Results = self.client.get(&url).call()?.into_json()?;
         if let dto::Data::Multiple { data, .. } = res.data {
             Ok(data.into_iter().filter_map(map_result_to_chapter).collect())
         } else {
@@ -289,11 +321,11 @@ impl Extension for Mangadex {
         }
     }
 
-    fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {
+    fn get_pages(&self, path: String) -> anyhow::Result<Vec<String>> {        
         let chapter_id = path.replace("/chapter/", "");
         let url = format!("{}/at-home/server/{}", URL, chapter_id);
 
-        let res: ResultsAtHome = ureq::get(&url).call()?.into_json()?;
+        let res: ResultsAtHome = self.client.get(&url).call()?.into_json()?;
         Ok(map_result_to_pages(res))
     }
 
@@ -303,10 +335,6 @@ impl Extension for Mangadex {
 
     fn filter_list(&self) -> Vec<Input> {
         filter::FILTER_LIST.clone()
-    }
-
-    fn get_preferences(&self) -> anyhow::Result<Vec<Input>> {
-        Ok(vec![])
     }
 }
 

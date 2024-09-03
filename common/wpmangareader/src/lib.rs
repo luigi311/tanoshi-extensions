@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use chrono::{NaiveDateTime, Utc};
 use scraper::{ElementRef, Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, MangaInfo};
+use networking::Agent;
 
 fn get_data_src(el: &ElementRef) -> Option<String> {
     el.value()
@@ -56,8 +57,8 @@ pub fn parse_manga_list(url: &str, source_id: i64, body: &str) -> Result<Vec<Man
     Ok(manga)
 }
 
-pub fn get_latest_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<MangaInfo>> {
-    let body = ureq::get(&format!("{}/manga/?page={}&order=latest", url, page))
+pub fn get_latest_manga(url: &str, source_id: i64, page: i64, client: &Agent) -> Result<Vec<MangaInfo>> {
+    let body = client.get(&format!("{}/manga/?page={}&order=latest", url, page))
         .set("Referer", url)
         .call()?
         .into_string()?;
@@ -65,8 +66,8 @@ pub fn get_latest_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<Mang
     parse_manga_list(url, source_id, &body)
 }
 
-pub fn get_popular_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<MangaInfo>> {
-    let body = ureq::get(&format!("{}/manga/?page={}&order=popular", url, page))
+pub fn get_popular_manga(url: &str, source_id: i64, page: i64, client: &Agent) -> Result<Vec<MangaInfo>> {
+    let body = client.get(&format!("{}/manga/?page={}&order=popular", url, page))
         .set("Referer", url)
         .call()?
         .into_string()?;
@@ -74,8 +75,8 @@ pub fn get_popular_manga(url: &str, source_id: i64, page: i64) -> Result<Vec<Man
     parse_manga_list(url, source_id, &body)
 }
 
-pub fn search_manga(url: &str, source_id: i64, page: i64, query: &str) -> Result<Vec<MangaInfo>> {
-    let body = ureq::get(&format!("{}/page/{}/?s={}", url, page, query))
+pub fn search_manga(url: &str, source_id: i64, page: i64, query: &str, client: &Agent) -> Result<Vec<MangaInfo>> {
+    let body = client.get(&format!("{}/page/{}/?s={}", url, page, query))
         .set("Referer", url)
         .call()?
         .into_string()?;
@@ -83,8 +84,8 @@ pub fn search_manga(url: &str, source_id: i64, page: i64, query: &str) -> Result
     parse_manga_list(url, source_id, &body)
 }
 
-pub fn get_manga_detail(url: &str, path: &str, source_id: i64) -> Result<MangaInfo> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_manga_detail(url: &str, path: &str, source_id: i64, client: &Agent) -> Result<MangaInfo> {
+    let body = client.get(&format!("{}{}", url, path))
         .set("Referer", url)
         .call()?
         .into_string()?;
@@ -136,8 +137,8 @@ pub fn get_manga_detail(url: &str, path: &str, source_id: i64) -> Result<MangaIn
     })
 }
 
-pub fn get_chapters(url: &str, path: &str, source_id: i64) -> Result<Vec<ChapterInfo>> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_chapters(url: &str, path: &str, source_id: i64, client: &Agent) -> Result<Vec<ChapterInfo>> {
+    let body = client.get(&format!("{}{}", url, path))
         .set("Referer", url)
         .set("X-Requested-With", "XMLHttpRequest")
         .call()?
@@ -202,8 +203,8 @@ pub fn get_chapters(url: &str, path: &str, source_id: i64) -> Result<Vec<Chapter
     Ok(chapters)
 }
 
-pub fn get_pages(url: &str, path: &str) -> Result<Vec<String>> {
-    let body = ureq::get(&format!("{}{}", url, path))
+pub fn get_pages(url: &str, path: &str, client: &Agent) -> Result<Vec<String>> {   
+    let body = client.get(&format!("{}{}", url, path))
         .set("Referer", url)
         .call()?
         .into_string()?;

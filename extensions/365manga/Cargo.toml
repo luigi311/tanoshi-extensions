@@ -1,12 +1,15 @@
 [package]
 name = "three_sixty_five_manga"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
+networking = { path = "../../common/networking" }
 tanoshi-lib = "0.27.0"
 madara = { path = "../../common/madara" }
 anyhow = "1"
+lazy_static = "1"
+ureq = { version = "2", features = ["cookies"]}
