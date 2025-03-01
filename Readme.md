@@ -30,6 +30,6 @@ This repository host extenstions for tanoshi
 | 25  | AsuraScans          |                                            | Active  |
 | 26  | LeviatanScans       |                                            | Active  |
 | 27  | MangaTX             | Site closed                                | Removed |
-
+| 28  | WeebCentral         |                                            | Active  |
 ## Diclaimer
 The developer of this application does not host any content and does not have affiliation with any content provider.
