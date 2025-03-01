@@ -9,24 +9,21 @@ on:
 
 env:
   RUST_TOOLCHAIN: 1.79.0
+  CARGO_TERM_COLOR: always
 
 jobs:
   build:
     strategy:
       matrix:
         platform:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             arch: x86_64
             target: x86_64-unknown-linux-gnu
-            extension: so          
-          - os: ubuntu-latest
+            extension: so
+          - os: ubuntu-24.04-arm
             arch: aarch64
             target: aarch64-unknown-linux-gnu
             extension: so
-          - os: macos-latest
-            arch: x86_64
-            target: x86_64-apple-darwin
-            extension: dylib
           - os: windows-latest
             arch: x86_64
             target: x86_64-pc-windows-msvc
@@ -35,18 +32,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cross build
-        if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' }}
-        uses: houseabsolute/actions-rust-cross@v0
-        with:
-          toolchain: ${{ env.RUST_TOOLCHAIN }}
-          target: ${{ matrix.platform.target }} 
-          command: build
-          args: "--release"
+      - name: Set rust
+        run: rustup update ${{ env.RUST_TOOLCHAIN }} && rustup default ${{ env.RUST_TOOLCHAIN }} && rustup target add ${{ matrix.platform.target }}
 
-      - name: Start FlareSolverr
+      # Test only on linux once, allow failure due to network blocks
+      - name: Cargo test
         if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
-        run: | 
+        run: |
           docker run -d \
             --name=flaresolverr \
             -p 8191:8191 \
@@ -54,44 +46,37 @@ jobs:
             --restart unless-stopped \
             --network=host \
             ghcr.io/flaresolverr/flaresolverr:latest
-          
+
           # Sleep 5 seconds to wait for FlareSolverr to start
           sleep 5
 
-      # Test only on linux once
-      - name: Cargo test
-        if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
-        run: |
-          cargo build --release --target ${{ matrix.platform.target }}
-
-          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test --release --target ${{ matrix.platform.target }}
+          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test -- --test-threads=1 || true
 
           # Stop FlareSolverr
           docker stop flaresolverr
 
+      - name: Cargo Build
+        run: cargo build --release
+
       - name: Generate json
         if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
         run: |
-          URL=$(curl -sL "https://api.github.com/repos/luigi311/tanoshi/releases/latest" | grep "tanoshi-cli" | grep '"browser_download_url":' | sed -E 's/.*"([^"]+)".*/\1/') 
+          URL=$(curl -sL "https://api.github.com/repos/luigi311/tanoshi/releases/latest" | grep "tanoshi-cli" | grep '"browser_download_url":' | sed -E 's/.*"([^"]+)".*/\1/')
           curl -L $URL -o $HOME/.cargo/bin/tanoshi-cli
           chmod +x $HOME/.cargo/bin/tanoshi-cli
-          $HOME/.cargo/bin/tanoshi-cli --path target/${{ matrix.platform.target }}/release generate-json
+          $HOME/.cargo/bin/tanoshi-cli --path target/release generate-json
           mv output/${{ matrix.platform.target }}/index.json output/
 
-      - if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' }}
-        run: |
+      - run: |
           mkdir -p output/${{ matrix.platform.target }}/
-          cp target/${{ matrix.platform.target }}/release/*.${{ matrix.platform.extension }} output/${{ matrix.platform.target }}/
-      
-      - if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' && matrix.platform.target != 'x86_64-pc-windows-msvc' }}
-        run: cd output/${{ matrix.platform.target }}/ && for f in *.${{ matrix.platform.extension }};do mv $f ${f#lib}; done; cd ../..
-      
+          cp target/release/*.${{ matrix.platform.extension }} output/${{ matrix.platform.target }}/
+
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.target }}
           path: output
-  
+
   push:
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
@@ -109,7 +94,7 @@ jobs:
           # Remove all existing files
           rm -rf *
           cd ..
-          
+
       - name: Download dist
         uses: actions/download-artifact@v4
         with:
