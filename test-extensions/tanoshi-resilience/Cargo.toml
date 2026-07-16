@@ -1,0 +1,17 @@
+[package]
+name = "tanoshi-test-extension"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93.1"
+publish = false
+
+[workspace]
+resolver = "3"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = "1"
+bytes = "1"
+tanoshi-lib = { git = "https://github.com/luigi311/tanoshi", tag = "v0.38.0" }
