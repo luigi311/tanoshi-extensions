@@ -10,6 +10,7 @@ use dto::ResultsAtHome;
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
+use std::collections::HashSet;
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 
 extension_utils::export_extension!(register, Mangadex, NAME);
@@ -378,14 +379,16 @@ impl Extension for Mangadex {
         log::debug!("{NAME}: get_chapters path={path}");
         let mut offset = 0;
         let mut chapters = Vec::new();
-        let mut feed_has_results = false;
-        let mut saw_data = false;
+        let mut expected_total = None;
+        let mut seen_paths = HashSet::new();
+        let path = path.trim_end_matches('/');
 
         loop {
             // External chapters need a separate provider extension. Setting an include
             // filter disables MangaDex's implicit published-only filter, so retain it explicitly.
+            // Creation order avoids reordering releases when chapter metadata is edited.
             let url = format!(
-                "{}{}/feed?limit={CHAPTER_PAGE_LIMIT}&offset={offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&translatedLanguage[]=en&includes[]=scanlation_group&includeExternalUrl=0&includeFuturePublishAt=0",
+                "{}{}/feed?limit={CHAPTER_PAGE_LIMIT}&offset={offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&translatedLanguage[]=en&includes[]=scanlation_group&includeExternalUrl=0&includeFuturePublishAt=0&order[createdAt]=asc",
                 URL, path
             );
 
@@ -402,35 +405,59 @@ impl Extension for Mangadex {
                 data,
                 offset: response_offset,
                 total,
-                ..
+                limit,
             } = res.data
             else {
                 bail!("expected a MangaDex chapter collection from {url}");
             };
 
-            let page_len = data.len() as i64;
-            saw_data |= page_len > 0;
-            feed_has_results |= total > 0;
+            ensure!(
+                response_offset == offset,
+                "MangaDex chapter offset changed: requested {offset}, received {response_offset}: {url}"
+            );
+            ensure!(total >= 0, "negative MangaDex chapter total: {url}");
+            ensure!(
+                limit > 0 && limit <= CHAPTER_PAGE_LIMIT && data.len() <= limit as usize,
+                "invalid MangaDex chapter page size: limit {limit}, records {}: {url}",
+                data.len()
+            );
+            if let Some(expected) = expected_total {
+                ensure!(
+                    total == expected,
+                    "MangaDex chapter total changed from {expected} to {total}; retry the refresh: {url}"
+                );
+            } else {
+                expected_total = Some(total);
+            }
+            let next_offset = offset
+                .checked_add(data.len() as i64)
+                .context("MangaDex chapter offset overflow")?;
+            ensure!(
+                next_offset <= total,
+                "MangaDex chapter page exceeds total {total}: {url}"
+            );
+            ensure!(
+                !data.is_empty() || offset == total,
+                "MangaDex chapter feed ended early at {offset} of {total}: {url}"
+            );
             for (index, record) in data.into_iter().enumerate() {
-                chapters.push(map_result_to_chapter(record).with_context(|| {
+                let chapter = map_result_to_chapter(record).with_context(|| {
                     format!("invalid MangaDex chapter record {} from {url}", index + 1)
-                })?);
+                })?;
+                // Each release ID contributes to the advertised total. Discarding a
+                // duplicate would hide a missing release; chapter numbers are not IDs.
+                ensure!(
+                    seen_paths.insert(chapter.path.clone()),
+                    "MangaDex chapter feed repeated release {}; retry the refresh: {url}",
+                    chapter.path
+                );
+                chapters.push(chapter);
             }
 
-            let next_offset = response_offset + page_len;
-            if page_len == 0 || next_offset >= total {
+            if next_offset == total {
                 break;
             }
-            if next_offset <= offset {
-                bail!("MangaDex chapter feed pagination did not advance");
-            }
             offset = next_offset;
-        }
-
-        if chapters.is_empty() && (saw_data || feed_has_results) {
-            bail!(
-                "MangaDex feed from {URL}{path}/feed contains no chapters despite reporting results"
-            );
         }
 
         Ok(chapters)
