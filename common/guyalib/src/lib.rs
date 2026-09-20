@@ -160,6 +160,12 @@ pub fn get_chapters(
         })
     }
 
+    // Keep specials and distinct paths even when they share a numeric value.
+    chapters.sort_by(|a, b| {
+        a.number
+            .total_cmp(&b.number)
+            .then_with(|| a.path.cmp(&b.path))
+    });
     ensure_non_empty(&request_url, chapters)
 }
 
