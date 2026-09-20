@@ -200,6 +200,7 @@ pub fn search_manga_old(
     query: &str,
     client: &RateLimitedAgent,
 ) -> Result<Vec<MangaInfo>> {
+    let query = urlencoding::encode(query);
     let body = client.fetch_text(&format!("{}/search?q={}&page={}", url, query, page))?;
 
     let selector =

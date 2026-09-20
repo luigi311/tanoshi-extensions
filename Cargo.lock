@@ -702,6 +702,7 @@ dependencies = [
  "networking",
  "scraper",
  "tanoshi-lib",
+ "urlencoding",
 ]
 
 [[package]]
@@ -723,7 +724,7 @@ dependencies = [
 
 [[package]]
 name = "manhwa18cc"
-version = "0.5.8"
+version = "0.5.9"
 dependencies = [
  "anyhow",
  "extension-utils",
