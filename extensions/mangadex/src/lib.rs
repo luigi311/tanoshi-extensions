@@ -5,7 +5,7 @@ use crate::dto::{
     Relationship, Results,
     manga::{ListOrder, Order, request},
 };
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, bail, ensure};
 use dto::ResultsAtHome;
 use fancy_regex::Regex;
 use lazy_static::lazy_static;
@@ -78,13 +78,22 @@ pub fn map_tags_to_string(relationships: Vec<Relationship>) -> Vec<String> {
     tags
 }
 
-pub fn map_result_to_manga(data: Relationship) -> Option<MangaInfo> {
+pub fn map_result_to_manga(data: Relationship) -> Result<MangaInfo> {
     match data {
         Relationship::Manga {
             id,
             attributes,
             relationships,
         } => {
+            ensure!(!id.trim().is_empty(), "manga is missing its id");
+            let attributes = attributes.context("manga is missing its attributes")?;
+            let title = ["en", "ja-ro", "ja"]
+                .into_iter()
+                .filter_map(|language| attributes.title.get(language))
+                .chain(attributes.title.values())
+                .find(|title| !title.trim().is_empty())
+                .context("manga is missing its title")?
+                .clone();
             let mut author = vec![];
             let mut genre = vec![];
             let mut file_name = "".to_string();
@@ -115,50 +124,39 @@ pub fn map_result_to_manga(data: Relationship) -> Option<MangaInfo> {
                 };
             }
 
-            Some(MangaInfo {
+            Ok(MangaInfo {
                 source_id: ID,
-                title: attributes
-                    .clone()
-                    .and_then(|attr| {
-                        if let Some(title) = attr.title.get("en").cloned() {
-                            Some(title)
-                        } else if let Some(title) = attr.title.get("ja-ro").cloned() {
-                            Some(title)
-                        } else if let Some(title) = attr.title.get("ja").cloned() {
-                            Some(title)
-                        } else {
-                            attr.title.values().next().cloned()
-                        }
-                    })
-                    .unwrap_or_else(String::new),
+                title,
                 author,
-                genre: attributes
-                    .clone()
-                    .map(|attr| attr.tags)
-                    .map(map_tags_to_string)
-                    .unwrap_or_else(Vec::new),
-                status: attributes
-                    .clone()
-                    .and_then(|attr| attr.status)
-                    .map(|s| s.to_string()),
+                genre: map_tags_to_string(attributes.tags),
+                status: attributes.status.map(|s| s.to_string()),
                 description: attributes
-                    .and_then(|attr| attr.description.get("en").cloned())
-                    .map(remove_bbcode),
+                    .description
+                    .get("en")
+                    .cloned()
+                    .map(remove_bbcode)
+                    .filter(|description| !description.trim().is_empty()),
                 path: format!("/manga/{}", id),
-                cover_url: format!("https://uploads.mangadex.org/covers/{}/{}", id, file_name),
+                cover_url: if file_name.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!("https://uploads.mangadex.org/covers/{}/{}", id, file_name)
+                },
             })
         }
-        _ => None,
+        _ => bail!("expected a manga record"),
     }
 }
 
-pub fn map_result_to_chapter(data: Relationship) -> Option<ChapterInfo> {
+pub fn map_result_to_chapter(data: Relationship) -> Result<ChapterInfo> {
     match data {
         Relationship::Chapter {
             id,
             attributes,
             relationships,
         } => {
+            ensure!(!id.trim().is_empty(), "chapter is missing its id");
+            let attributes = attributes.context("chapter is missing its attributes")?;
             let mut scanlator = "".to_string();
             for relationship in relationships {
                 if let Relationship::ScanlationGroup { attributes, .. } = relationship
@@ -168,13 +166,11 @@ pub fn map_result_to_chapter(data: Relationship) -> Option<ChapterInfo> {
                 }
             }
 
-            let volume = attributes.clone().and_then(|attr| attr.volume);
-            let number = attributes.clone().and_then(|attr| attr.chapter);
-            let mut title = attributes
-                .clone()
-                .and_then(|attr| attr.title)
-                .unwrap_or_else(|| "".to_string());
+            let volume = attributes.volume;
+            let number = attributes.chapter;
+            let mut title = attributes.title.unwrap_or_default();
 
+            // All three labels may be absent for a valid chapter. Keep its empty title.
             if title.is_empty() {
                 if let Some(vol) = volume {
                     title = format!("Volume {}", vol);
@@ -185,7 +181,7 @@ pub fn map_result_to_chapter(data: Relationship) -> Option<ChapterInfo> {
                 title = title.trim().to_string();
             }
 
-            Some(ChapterInfo {
+            Ok(ChapterInfo {
                 source_id: ID,
                 title,
                 path: format!("/chapter/{}", id),
@@ -193,20 +189,48 @@ pub fn map_result_to_chapter(data: Relationship) -> Option<ChapterInfo> {
                     .and_then(|chapter| chapter.parse().ok())
                     .unwrap_or_default(),
                 scanlator: Some(scanlator),
-                uploaded: attributes
-                    .map(|attr| attr.publish_at.naive_utc().and_utc().timestamp())
-                    .unwrap_or_else(|| 0),
+                uploaded: attributes.publish_at.timestamp(),
             })
         }
-        _ => None,
+        _ => bail!("expected a chapter record"),
     }
 }
 
-pub fn map_result_to_pages(data: ResultsAtHome) -> Vec<String> {
+pub fn map_result_to_pages(data: ResultsAtHome) -> Result<Vec<String>> {
+    ensure!(data.result == "ok", "At-Home API did not report success");
+    let base_url = url::Url::parse(&data.base_url).context("invalid At-Home base URL")?;
+    ensure!(
+        matches!(base_url.scheme(), "http" | "https")
+            && base_url.host_str().is_some()
+            && base_url.query().is_none()
+            && base_url.fragment().is_none(),
+        "invalid At-Home image server URL"
+    );
+    ensure!(
+        !data.chapter.hash.trim().is_empty(),
+        "At-Home response is missing its chapter hash"
+    );
+    ensure!(
+        !data.chapter.data.is_empty(),
+        "At-Home response contains no pages"
+    );
     data.chapter
         .data
         .iter()
-        .map(|d| format!("{}/data/{}/{}", data.base_url, data.chapter.hash, d))
+        .enumerate()
+        .map(|(index, file)| {
+            ensure!(
+                !file.trim().is_empty(),
+                "At-Home page {} is missing its filename",
+                index + 1
+            );
+            Ok(format!(
+                "{}/data/{}/{}",
+                data.base_url.trim_end_matches('/'),
+                data.chapter.hash,
+                file
+            ))
+        })
         .collect()
 }
 
@@ -226,7 +250,14 @@ impl Mangadex {
 
         // ureq v3: read JSON from the body
         let mut resp = self.client.get(&url).call()?;
-        let res: Results = resp.body_mut().read_json()?;
+        let res: Results = resp
+            .body_mut()
+            .read_json()
+            .with_context(|| format!("invalid MangaDex listing API response from {url}"))?;
+        ensure!(
+            res.result == "ok",
+            "MangaDex listing API did not report success: {url}"
+        );
         if let dto::Data::Multiple {
             data,
             offset: response_offset,
@@ -235,13 +266,34 @@ impl Mangadex {
         } = res.data
         {
             let raw_count = data.len();
-            let manga: Vec<MangaInfo> = data.into_iter().filter_map(map_result_to_manga).collect();
+            ensure!(
+                response_offset >= 0 && total >= 0,
+                "invalid MangaDex listing counts from {url}"
+            );
+            let mut manga = Vec::new();
+            for (index, record) in data.into_iter().enumerate() {
+                match map_result_to_manga(record) {
+                    Ok(info) => manga.push(info),
+                    Err(error) => log::warn!(
+                        "Skipping MangaDex listing record {} from {url}: {error:#}",
+                        index + 1
+                    ),
+                }
+            }
+            let rejected = raw_count - manga.len();
+            if rejected > 0 {
+                log::warn!(
+                    "MangaDex listing from {url}: rejected {rejected} of {raw_count} records"
+                );
+            }
             if manga.is_empty() && (raw_count > 0 || response_offset < total) {
-                bail!("parsed 0 items from {url} — markup change?");
+                bail!(
+                    "MangaDex listing from {url} contains no valid manga ({raw_count} records, {rejected} rejected, offset {response_offset}, total {total})"
+                );
             }
             Ok(manga)
         } else {
-            bail!("invalid data");
+            bail!("expected a MangaDex collection response from {url}");
         }
     }
 }
@@ -307,11 +359,18 @@ impl Extension for Mangadex {
         );
 
         let mut resp = self.client.get(&url).call()?;
-        let res: Results = resp.body_mut().read_json()?;
+        let res: Results = resp
+            .body_mut()
+            .read_json()
+            .with_context(|| format!("invalid MangaDex detail API response from {url}"))?;
+        ensure!(
+            res.result == "ok",
+            "MangaDex detail API did not report success: {url}"
+        );
         if let dto::Data::Single { data, .. } = res.data {
-            map_result_to_manga(data).ok_or_else(|| anyhow!("no such manga"))
+            map_result_to_manga(data).with_context(|| format!("invalid MangaDex detail from {url}"))
         } else {
-            bail!("invalid data");
+            bail!("expected a MangaDex entity response from {url}");
         }
     }
 
@@ -329,7 +388,14 @@ impl Extension for Mangadex {
             );
 
             let mut resp = self.client.get(&url).call()?;
-            let res: Results = resp.body_mut().read_json()?;
+            let res: Results = resp
+                .body_mut()
+                .read_json()
+                .with_context(|| format!("invalid MangaDex chapter API response from {url}"))?;
+            ensure!(
+                res.result == "ok",
+                "MangaDex chapter API did not report success: {url}"
+            );
             let dto::Data::Multiple {
                 data,
                 offset: response_offset,
@@ -337,13 +403,17 @@ impl Extension for Mangadex {
                 ..
             } = res.data
             else {
-                bail!("invalid data");
+                bail!("expected a MangaDex chapter collection from {url}");
             };
 
             let page_len = data.len() as i64;
             saw_data |= page_len > 0;
             feed_has_results |= total > 0;
-            chapters.extend(data.into_iter().filter_map(map_result_to_chapter));
+            for (index, record) in data.into_iter().enumerate() {
+                chapters.push(map_result_to_chapter(record).with_context(|| {
+                    format!("invalid MangaDex chapter record {} from {url}", index + 1)
+                })?);
+            }
 
             let next_offset = response_offset + page_len;
             if page_len == 0 || next_offset >= total {
@@ -356,7 +426,9 @@ impl Extension for Mangadex {
         }
 
         if chapters.is_empty() && (saw_data || feed_has_results) {
-            bail!("parsed 0 items from {URL}{path}/feed — markup change?");
+            bail!(
+                "MangaDex feed from {URL}{path}/feed contains no chapters despite reporting results"
+            );
         }
 
         Ok(chapters)
@@ -369,13 +441,11 @@ impl Extension for Mangadex {
         log::debug!("{NAME}: get_pages at-home url={url}");
 
         let mut resp = self.client_at_home.get(&url).call()?;
-        let res: ResultsAtHome = resp.body_mut().read_json()?;
-        let pages = map_result_to_pages(res);
-        if pages.is_empty() {
-            bail!("parsed 0 items from {url} — markup change?");
-        }
-
-        Ok(pages)
+        let res: ResultsAtHome = resp
+            .body_mut()
+            .read_json()
+            .with_context(|| format!("invalid MangaDex At-Home API response from {url}"))?;
+        map_result_to_pages(res).with_context(|| format!("invalid MangaDex pages from {url}"))
     }
 
     fn filter_list(&self) -> Vec<Input> {
