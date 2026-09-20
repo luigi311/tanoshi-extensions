@@ -405,20 +405,30 @@ impl Extension for Weebcentral {
 
         let mut panels = vec![];
 
-        let panel_selector =
-            Selector::parse("section.w-full.pb-4.cursor-pointer > img.mx-auto").unwrap();
+        let section_selector = Selector::parse("section.w-full.pb-4.cursor-pointer").unwrap();
+        let panel_selector = Selector::parse(":scope > img.mx-auto").unwrap();
 
-        for (index, panel) in document.select(&panel_selector).enumerate() {
-            let page = index + 1;
-            let src = panel
-                .value()
-                .attr("src")
-                .map(str::trim)
-                .filter(|src| !src.is_empty())
-                .with_context(|| {
-                    format!("WeebCentral page {page} from {URL}{path}/images: missing image src")
-                })?;
-            panels.push(src.to_string());
+        for (index, section) in document.select(&section_selector).enumerate() {
+            let row = index + 1;
+            let mut images = section.select(&panel_selector).peekable();
+            anyhow::ensure!(
+                images.peek().is_some(),
+                "WeebCentral page container {row} from {URL}{path}/images: missing image"
+            );
+            for panel in images {
+                let page = panels.len() + 1;
+                let src = panel
+                    .value()
+                    .attr("src")
+                    .map(str::trim)
+                    .filter(|src| !src.is_empty())
+                    .with_context(|| {
+                        format!(
+                            "WeebCentral page {page} from {URL}{path}/images: missing image src"
+                        )
+                    })?;
+                panels.push(src.to_string());
+            }
         }
 
         if panels.is_empty() {
