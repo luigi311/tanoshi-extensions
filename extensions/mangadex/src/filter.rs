@@ -7,6 +7,8 @@ lazy_static! {
         name: "Title".to_string(),
         state: None
     };
+    // Author and Artist accept comma-separated MangaDex IDs, not display names.
+    // Keep the labels stable because the host persists inputs by name.
     pub static ref AUTHOR_FILTER: Input = Input::Text {
         name: "Author".to_string(),
         state: None

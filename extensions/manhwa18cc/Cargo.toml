@@ -1,6 +1,6 @@
 [package]
 name = "manhwa18cc"
-version = "0.5.9"
+version = "0.5.11"
 edition.workspace = true
 
 [lib]

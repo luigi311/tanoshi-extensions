@@ -1,5 +1,5 @@
 use anyhow::Result;
-use guyalib::{get_chapters, get_manga_detail, get_manga_list, get_pages};
+use guyalib::{MangaOrder, get_chapters, get_manga_detail, get_manga_list, get_pages};
 use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
@@ -46,24 +46,35 @@ impl Extension for Guya {
         }
     }
 
-    fn get_popular_manga(&self, _page: i64) -> Result<Vec<MangaInfo>> {
-        log::debug!("{NAME}: get_popular_manga");
-        get_manga_list(URL, ID, &self.client)
+    fn get_popular_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
+        log::debug!("{NAME}: get_popular_manga page={page}");
+        // Guya returns its complete catalog in one response. As with the other
+        // sources, page numbers below one retain first-page behavior.
+        if page > 1 {
+            return Ok(vec![]);
+        }
+        get_manga_list(URL, ID, &self.client, MangaOrder::Title)
     }
 
-    fn get_latest_manga(&self, _page: i64) -> Result<Vec<MangaInfo>> {
-        log::debug!("{NAME}: get_latest_manga");
-        get_manga_list(URL, ID, &self.client)
+    fn get_latest_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
+        log::debug!("{NAME}: get_latest_manga page={page}");
+        if page > 1 {
+            return Ok(vec![]);
+        }
+        get_manga_list(URL, ID, &self.client, MangaOrder::Latest)
     }
 
     fn search_manga(
         &self,
-        _page: i64,
+        page: i64,
         query: Option<String>,
         _filters: Option<Vec<Input>>,
     ) -> Result<Vec<MangaInfo>> {
-        log::debug!("{NAME}: search_manga query={query:?}");
-        let manga = get_manga_list(URL, ID, &self.client)?;
+        log::debug!("{NAME}: search_manga page={page} query={query:?}");
+        if page > 1 {
+            return Ok(vec![]);
+        }
+        let manga = get_manga_list(URL, ID, &self.client, MangaOrder::Title)?;
 
         if let Some(query) = query {
             Ok(manga
@@ -103,6 +114,7 @@ mod test {
     const COMPLETED_CHAPTER_COUNT: usize = 318;
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let guya = Guya::default();
         let res = guya.get_popular_manga(1).unwrap();
@@ -110,6 +122,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let guya = Guya::default();
         let res = guya.get_latest_manga(1).unwrap();
@@ -117,6 +130,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let guya = Guya::default();
         let res = guya
@@ -126,6 +140,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let guya = Guya::default();
         let res = guya
@@ -135,6 +150,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let guya = Guya::default();
         let res = guya.get_chapters(COMPLETED_MANGA_PATH.to_string()).unwrap();
@@ -161,6 +177,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let guya = Guya::default();
         let res = guya

@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use chrono::DateTime;
 use lazy_static::lazy_static;
 use networking::{
@@ -137,13 +137,14 @@ fn parse_api_response<T: DeserializeOwned>(body: &str, resource: &str) -> Result
         .select(&pre_selector)
         .next()
         .map(|element| element.text().collect::<String>())
-        .filter(|text| !text.trim().is_empty())
-        .ok_or_else(|| {
-            anyhow!("failed to parse NHentai {resource} API response: {direct_error}")
-        })?;
+        .filter(|text| !text.trim().is_empty());
+    let Some(wrapped_body) = wrapped_body else {
+        return Err(direct_error)
+            .with_context(|| format!("failed to parse NHentai {resource} API response"));
+    };
 
     serde_json::from_str(&wrapped_body)
-        .map_err(|error| anyhow!("failed to parse NHentai {resource} API response: {error}"))
+        .with_context(|| format!("failed to parse wrapped NHentai {resource} API response"))
 }
 
 impl CdnConfigCache {
@@ -214,16 +215,21 @@ impl Default for NHentai {
     }
 }
 
-fn nh_field_key(ui_label: &str) -> &'static str {
+fn nh_field_key(ui_label: &str) -> Option<&'static str> {
     match ui_label {
-        "Tag" => "tag",
-        "Characters" => "character",
-        "Artists" => "artist",
-        "Groups" => "group",
-        "Categories" => "category",
-        "Parodies" => "parody",
-        _ => "tag",
+        "Tag" => Some("tag"),
+        "Characters" => Some("character"),
+        "Artists" => Some("artist"),
+        "Groups" => Some("group"),
+        "Categories" => Some("category"),
+        "Parodies" => Some("parody"),
+        _ => None,
     }
+}
+
+struct SearchQuery {
+    text: String,
+    sort: Option<String>,
 }
 
 fn norm_value(v: &str) -> String {
@@ -243,6 +249,35 @@ fn trimmed_element_text(element: ElementRef<'_>) -> Option<String> {
     let text = element.text().collect::<String>();
     let text = text.trim();
     (!text.is_empty()).then(|| text.to_string())
+}
+
+fn validate_gallery(body: &str, path: &str) -> Result<()> {
+    let expected_id = path
+        .trim_matches('/')
+        .strip_prefix("g/")
+        .filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
+        .with_context(|| format!("invalid NHentai gallery path: {path}"))?;
+    let document = Html::parse_document(body);
+    let id_selector = Selector::parse("#info h3#gallery_id").unwrap();
+    let title_selector = Selector::parse("#info h1.title > .pretty").unwrap();
+    let displayed_id = document
+        .select(&id_selector)
+        .next()
+        .and_then(trimmed_element_text)
+        .with_context(|| format!("NHentai gallery {URL}{path}: missing gallery id"))?;
+    anyhow::ensure!(
+        displayed_id.trim_start_matches('#').trim() == expected_id,
+        "NHentai gallery {URL}{path}: response gallery id does not match requested id"
+    );
+    anyhow::ensure!(
+        document
+            .select(&title_selector)
+            .next()
+            .and_then(trimmed_element_text)
+            .is_some(),
+        "NHentai gallery {URL}{path}: missing title"
+    );
+    Ok(())
 }
 
 fn parse_uploaded_timestamp(value: &str) -> Option<i64> {
@@ -289,6 +324,30 @@ fn build_gallery_page_urls(
 }
 
 impl NHentai {
+    fn search_url(
+        &self,
+        page: i64,
+        query: Option<String>,
+        filters: Option<Vec<Input>>,
+    ) -> Result<String> {
+        let query = query.filter(|text| !text.trim().is_empty());
+        let filters = filters.filter(|filters| !filters.is_empty());
+        if query.is_none() && filters.is_none() {
+            return Err(anyhow!("query and filters cannot be both empty"));
+        }
+        let text_only = filters.is_none();
+        let mut request = self.query_parts(query.as_deref(), filters)?;
+        // Preserve the text-only popularity sort and any explicit filter sort.
+        if text_only {
+            request.sort = Some("popular".to_string());
+        }
+        let q = encode(&request.text);
+        Ok(match request.sort {
+            Some(sort) => format!("{URL}/search/?q={q}&sort={sort}&page={page}"),
+            None => format!("{URL}/search/?q={q}&page={page}"),
+        })
+    }
+
     fn fetch_gallery(&self, path: &str) -> Result<String> {
         let url = format!("{}{}", URL, path);
         {
@@ -305,7 +364,10 @@ impl NHentai {
         let body = self
             .client
             .fetch_text(&url)
-            .map_err(|e| anyhow!(e.to_string()))?;
+            .with_context(|| format!("NHentai gallery request failed: {url}"))?;
+        // Both details and the synthetic chapter must refer to a real gallery.
+        // Reject unexpected responses before they can populate the shared cache.
+        validate_gallery(&body, path)?;
         let mut cache = self
             .gallery_cache
             .lock()
@@ -330,8 +392,9 @@ impl NHentai {
         let cdn_res = self
             .client
             .fetch_text(&cdn_url)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        let cdn: CdnConfigResponse = parse_api_response(&cdn_res, "CDN")?;
+            .with_context(|| format!("NHentai CDN request failed: {cdn_url}"))?;
+        let cdn: CdnConfigResponse = parse_api_response(&cdn_res, "CDN")
+            .with_context(|| format!("NHentai CDN response from {cdn_url}"))?;
         if cdn.image_servers.is_empty() {
             return Err(anyhow!("NHentai CDN API returned no image servers"));
         }
@@ -344,8 +407,12 @@ impl NHentai {
         Ok(cdn.image_servers)
     }
 
-    fn query_parts(&self, filters: Option<Vec<Input>>) -> (String, Option<String>) {
-        let mut query: Vec<String> = vec![];
+    fn query_parts(&self, text: Option<&str>, filters: Option<Vec<Input>>) -> Result<SearchQuery> {
+        let mut query: Vec<String> = text
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_string)
+            .into_iter()
+            .collect();
         let mut sort: Option<String> = None;
 
         // preferences: language + global blacklist
@@ -373,13 +440,24 @@ impl NHentai {
         // filters
         if let Some(filters) = filters {
             for filter in filters {
+                let Some(canonical) = FILTER_LIST
+                    .iter()
+                    .find(|known| known.name() == filter.name())
+                else {
+                    continue;
+                };
+                if !canonical.eq(&filter) {
+                    return Err(anyhow!("invalid {}: unexpected input type", filter.name()));
+                }
                 match filter {
                     Input::Text {
                         name,
                         state: Some(state),
                         ..
                     } if name == TAG_FILTER.name() => {
-                        let key = nh_field_key(&name);
+                        let Some(key) = nh_field_key(&name) else {
+                            continue;
+                        };
                         for raw in state.split(',') {
                             let raw = raw.trim();
                             if raw.is_empty() {
@@ -387,6 +465,9 @@ impl NHentai {
                             }
                             let neg = raw.starts_with('-');
                             let term = norm_value(raw.trim_start_matches('-'));
+                            if term.is_empty() {
+                                continue;
+                            }
                             if neg {
                                 query.push(format!("-{key}:{term}"));
                             } else {
@@ -399,7 +480,9 @@ impl NHentai {
                         state: Some(state),
                         ..
                     } => {
-                        let key = nh_field_key(&name);
+                        let Some(key) = nh_field_key(&name) else {
+                            continue;
+                        };
                         let term = norm_value(&state);
                         if !term.is_empty() {
                             query.push(format!("{key}:{term}"));
@@ -411,10 +494,22 @@ impl NHentai {
                         state,
                         ..
                     } if name == SORT_FILTER.name() => {
-                        let idx = state.unwrap_or(0) as usize;
-                        if let Some(InputType::String(v)) = values.get(idx) {
-                            sort = Some(v.replace(' ', "-").to_lowercase()); // e.g., popular-week
+                        let index = state.unwrap_or(0);
+                        let selected = usize::try_from(index)
+                            .ok()
+                            .and_then(|index| values.get(index));
+                        let Some(InputType::String(value)) = selected else {
+                            return Err(anyhow!(
+                                "invalid Sort: selection index {index} is not a string choice"
+                            ));
+                        };
+                        if !matches!(
+                            value.as_str(),
+                            "Popular" | "Popular Week" | "Popular Today" | "Recent"
+                        ) {
+                            return Err(anyhow!("invalid Sort: unknown choice"));
                         }
+                        sort = Some(value.replace(' ', "-").to_lowercase());
                     }
                     _ => {}
                 }
@@ -426,14 +521,14 @@ impl NHentai {
         } else {
             query.join(" ")
         };
-        (q, sort)
+        Ok(SearchQuery { text: q, sort })
     }
 
-    fn get_manga_list(&self, url: &str, allow_empty: bool) -> Result<Vec<MangaInfo>> {
+    fn get_manga_list(&self, url: &str) -> Result<Vec<MangaInfo>> {
         let res = self
             .client
             .fetch_text(url)
-            .map_err(|e| anyhow!(e.to_string()))?;
+            .with_context(|| format!("NHentai listing request failed: {url}"))?;
 
         let document = Html::parse_document(&res);
         let gallery_selector =
@@ -444,29 +539,45 @@ impl NHentai {
             Selector::parse("a").map_err(|e| anyhow!("failed to parse selector: {e:?}"))?;
         let title_selector = Selector::parse("a > .caption")
             .map_err(|e| anyhow!("failed to parse selector: {e:?}"))?;
+        let empty_selector = Selector::parse("#content .no-results > h2").unwrap();
 
         let mut manga_list = vec![];
-        for gallery in document.select(&gallery_selector) {
+        let matched = document.select(&gallery_selector).count();
+        for (index, gallery) in document.select(&gallery_selector).enumerate() {
+            let card = index + 1;
+            // Missing artwork does not invalidate a gallery.
             let cover_url = gallery
                 .select(&image_selector)
                 .flat_map(|thumbnail| thumbnail.value().attr("src"))
                 .next()
+                .map(str::trim)
+                .filter(|src| !src.is_empty())
                 .map(normalize_url)
-                .ok_or_else(|| anyhow!("cover_url not found"))?;
+                .unwrap_or_default();
 
-            let path = gallery
+            let Some(path) = gallery
                 .select(&path_selector)
                 .flat_map(|link| link.value().attr("href"))
                 .next()
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow!("path not found"))?;
+                .filter(|path| {
+                    path.trim_matches('/').strip_prefix("g/").is_some_and(|id| {
+                        !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+                })
+                .map(str::to_string)
+            else {
+                log::warn!("Skipping NHentai manga card {card} from {url}: invalid gallery path");
+                continue;
+            };
 
-            let title = gallery
+            let Some(title) = gallery
                 .select(&title_selector)
-                .flat_map(|caption| caption.text().next())
                 .next()
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow!("title not found"))?;
+                .and_then(trimmed_element_text)
+            else {
+                log::warn!("Skipping NHentai manga card {card} from {url}: missing title");
+                continue;
+            };
 
             manga_list.push(MangaInfo {
                 source_id: ID,
@@ -479,14 +590,19 @@ impl NHentai {
                 cover_url,
             });
         }
-        // Past the end of pagination the site serves an explicit
-        // "No results found" page — a legitimate empty, not breakage.
-        if !allow_empty
-            && !res.trim().is_empty()
-            && manga_list.is_empty()
-            && !res.contains("No results found")
-        {
-            return Err(anyhow!("parsed 0 items from {url} — markup change?"));
+        let rejected = matched - manga_list.len();
+        if rejected > 0 {
+            log::warn!("NHentai listing from {url}: rejected {rejected} of {matched} cards");
+        }
+        if manga_list.is_empty() {
+            let recognized_empty = matched == 0
+                && document
+                    .select(&empty_selector)
+                    .any(|el| trimmed_element_text(el).as_deref() == Some("No results found"));
+            anyhow::ensure!(
+                recognized_empty,
+                "NHentai listing from {url}: no valid manga ({matched} matched, {rejected} rejected); unrecognized or malformed response"
+            );
         }
 
         Ok(manga_list)
@@ -510,19 +626,16 @@ impl Extension for NHentai {
 
     fn get_popular_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: get_popular_manga page={page}");
-        let (q, _) = self.query_parts(None);
-        let q = encode(&q);
-        self.get_manga_list(
-            &format!("{URL}/search/?q={q}&sort=popular&page={page}"),
-            false,
-        )
+        let request = self.query_parts(None, None)?;
+        let q = encode(&request.text);
+        self.get_manga_list(&format!("{URL}/search/?q={q}&sort=popular&page={page}"))
     }
 
     fn get_latest_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: get_latest_manga page={page}");
-        let (q, _) = self.query_parts(None);
-        let q = encode(&q);
-        self.get_manga_list(&format!("{URL}/search/?q={q}&page={page}"), false)
+        let request = self.query_parts(None, None)?;
+        let q = encode(&request.text);
+        self.get_manga_list(&format!("{URL}/search/?q={q}&page={page}"))
     }
 
     fn search_manga(
@@ -532,20 +645,8 @@ impl Extension for NHentai {
         filters: Option<Vec<Input>>,
     ) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: search_manga page={page} query={query:?}");
-        let url = if let Some(filters) = filters {
-            let (q_raw, sort) = self.query_parts(Some(filters));
-            let q = encode(&q_raw);
-            match sort {
-                Some(s) => format!("{URL}/search/?q={q}&sort={s}&page={page}"),
-                None => format!("{URL}/search/?q={q}&page={page}"),
-            }
-        } else if let Some(query) = query {
-            let q = encode(&query);
-            format!("{URL}/search/?q={q}&sort=popular&page={page}")
-        } else {
-            return Err(anyhow!("query and filters cannot be both empty"));
-        };
-        self.get_manga_list(&url, true)
+        let url = self.search_url(page, query, filters)?;
+        self.get_manga_list(&url)
     }
 
     fn get_manga_detail(&self, path: String) -> Result<MangaInfo> {
@@ -628,14 +729,16 @@ impl Extension for NHentai {
             .select(&thumbnail_selector)
             .flat_map(|el| el.value().attr("src"))
             .next()
+            .map(str::trim)
+            .filter(|src| !src.is_empty())
             .map(normalize_url)
-            .ok_or_else(|| anyhow!("cover not found"))?;
+            .unwrap_or_default();
 
         let title = document
             .select(&title_selector)
             .filter_map(trimmed_element_text)
             .next()
-            .ok_or_else(|| anyhow!("title not found"))?;
+            .with_context(|| format!("NHentai gallery {URL}{path}: missing title"))?;
 
         let author: Vec<String> = document
             .select(&author_selector)
@@ -706,8 +809,9 @@ impl Extension for NHentai {
         let gallery_res = self
             .client
             .fetch_text(&api_url)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        let gallery: GalleryApiResponse = parse_api_response(&gallery_res, "gallery")?;
+            .with_context(|| format!("NHentai gallery API request failed: {api_url}"))?;
+        let gallery: GalleryApiResponse = parse_api_response(&gallery_res, "gallery")
+            .with_context(|| format!("NHentai gallery API response from {api_url}"))?;
 
         let image_servers = self.fetch_cdn_servers()?;
         let image_server = image_servers
@@ -751,6 +855,82 @@ mod test {
         nhentai.set_preferences(preferences).unwrap();
 
         nhentai
+    }
+
+    #[test]
+    fn search_combines_text_filters_and_preferences() {
+        let source = create_test_instance();
+        let text = "A&B + 日本語";
+        let text_filter = |name: &str, state: &str| Input::Text {
+            name: name.into(),
+            state: Some(state.into()),
+        };
+        let query_value = |url: &str| {
+            let value = url
+                .split('?')
+                .nth(1)
+                .unwrap()
+                .split('&')
+                .find_map(|part| part.strip_prefix("q="))
+                .unwrap();
+            urlencoding::decode(value).unwrap().into_owned()
+        };
+        let plain = source.search_url(1, Some(text.into()), None).unwrap();
+        assert!(query_value(&plain).contains(text));
+        assert!(query_value(&plain).contains("language:english"));
+        assert!(query_value(&plain).contains("-tag:posession"));
+        assert!(plain.contains("sort=popular&"));
+        assert_eq!(
+            plain,
+            source
+                .search_url(1, Some(text.into()), Some(vec![]))
+                .unwrap()
+        );
+        let filters = vec![
+            text_filter("Tag", "romance, -big breasts, , -"),
+            text_filter("Future Field", "ignored"),
+            Input::Select {
+                name: "Sort".into(),
+                values: vec![InputType::String("Popular Week".into())],
+                state: Some(0),
+            },
+        ];
+        for query in [None, Some(" ".into()), Some(text.into())] {
+            let combined = source
+                .search_url(2, query.clone(), Some(filters.clone()))
+                .unwrap();
+            let decoded = query_value(&combined);
+            assert_eq!(decoded.contains(text), query.as_deref() == Some(text));
+            for term in [
+                "language:english",
+                "-tag:posession",
+                "tag:romance",
+                "-tag:big_breasts",
+            ] {
+                assert!(decoded.contains(term), "missing {term}: {decoded}");
+            }
+            assert!(!decoded.contains("ignored"));
+            assert!(!decoded.split_whitespace().any(|term| term == "-tag:"));
+            assert!(combined.ends_with("sort=popular-week&page=2"));
+        }
+        for state in [-1, 4] {
+            let filters = vec![Input::Select {
+                name: "Sort".into(),
+                values: vec![InputType::String("Popular".into())],
+                state: Some(state),
+            }];
+            assert!(
+                source
+                    .search_url(1, Some(text.into()), Some(filters))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Sort")
+            );
+        }
+        for filters in [None, Some(vec![])] {
+            assert!(source.search_url(1, None, filters.clone()).is_err());
+            assert!(source.search_url(1, Some(" ".into()), filters).is_err());
+        }
     }
 
     #[test]
@@ -827,6 +1007,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let nhentai: NHentai = create_test_instance();
 
@@ -835,6 +1016,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -845,6 +1027,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         std::thread::sleep(std::time::Duration::from_secs(2));
 
@@ -857,6 +1040,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga_filter() {
         std::thread::sleep(std::time::Duration::from_secs(3));
 
@@ -883,6 +1067,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let nhentai: NHentai = create_test_instance();
 
@@ -893,6 +1078,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -907,6 +1093,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         std::thread::sleep(std::time::Duration::from_secs(2));
 

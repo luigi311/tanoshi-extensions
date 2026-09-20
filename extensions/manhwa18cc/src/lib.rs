@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use lazy_static::lazy_static;
 use madara::{get_chapters_old, get_manga_detail, parse_manga_list, search_manga_old};
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
@@ -39,6 +39,7 @@ fn get_manga_list(page: i64, orderby: &str, client: &RateLimitedAgent) -> Result
         Selector::parse(".manga-item").map_err(|e| anyhow!("failed to parse selector: {:?}", e))?;
 
     parse_manga_list(URL, ID, &body, &selector, false)
+        .with_context(|| format!("Manhwa18cc listing from {URL}/webtoons/{page}?orderby={orderby}"))
 }
 
 impl Extension for Manhwa18cc {
@@ -101,13 +102,21 @@ impl Extension for Manhwa18cc {
 
         let pages: Vec<String> = doc
             .select(&selector)
-            .flat_map(|el| {
+            .enumerate()
+            .map(|(index, el)| {
+                let page = index + 1;
                 el.value()
                     .attr("data-src")
+                    .filter(|src| !src.trim().is_empty())
                     .or_else(|| el.value().attr("src"))
+                    .map(str::trim)
+                    .filter(|src| !src.is_empty())
+                    .map(str::to_string)
+                    .with_context(|| {
+                        format!("Manhwa18cc page {page} from {URL}{path}: missing image source")
+                    })
             })
-            .map(|p| p.to_string())
-            .collect();
+            .collect::<Result<_>>()?;
 
         if pages.is_empty() {
             return Err(anyhow!("parsed 0 items from {URL}{path} — markup change?"));
@@ -129,6 +138,7 @@ mod test {
     const COMPLETED_CHAPTER_COUNT: usize = 70;
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -146,6 +156,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -154,6 +165,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -164,6 +176,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -174,6 +187,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -203,6 +217,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let manhwa18cc = Manhwa18cc::default();
 

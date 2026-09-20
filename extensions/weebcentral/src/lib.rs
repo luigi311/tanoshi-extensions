@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::prelude::*;
 use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
@@ -84,7 +84,6 @@ fn get_manga_list(
     mut page: i64,
     suburl: &str,
     client: &RateLimitedAgent,
-    allow_empty: bool,
 ) -> Result<Vec<MangaInfo>> {
     if page < 1 {
         page = 1;
@@ -93,7 +92,9 @@ fn get_manga_list(
 
     let mut manga_list = Vec::new();
     let url = format!("{}{}{}", URL, suburl, offset);
-    let body = client.fetch_text(&url)?;
+    let body = client
+        .fetch_text(&url)
+        .with_context(|| format!("WeebCentral listing request failed: {url}"))?;
     let document = Html::parse_document(&body);
 
     let manga_selector = Selector::parse("article.bg-base-300").unwrap();
@@ -105,12 +106,21 @@ fn get_manga_list(
     let status_selector = Selector::parse("strong + span").unwrap();
     let cover_selector = Selector::parse("picture img").unwrap();
     let url_selector = Selector::parse("a").unwrap();
+    let empty_selector =
+        Selector::parse("body > div[role='alert'].alert.alert-warning > span").unwrap();
 
-    for manga in document.select(&manga_selector) {
-        let title = manga.select(&title_selector).next().map_or_else(
-            || "Unknown Title".to_string(),
-            |el| el.inner_html().trim().to_string(),
-        );
+    let matched = document.select(&manga_selector).count();
+    for (index, manga) in document.select(&manga_selector).enumerate() {
+        let card = index + 1;
+        let Some(title) = manga
+            .select(&title_selector)
+            .next()
+            .map(|el| el.text().collect::<String>().trim().to_string())
+            .filter(|title| !title.is_empty())
+        else {
+            log::warn!("Skipping WeebCentral manga card {card} from {url}: missing title");
+            continue;
+        };
 
         let mut authors: Vec<String> = Vec::new();
         for author in manga.select(&author_selector) {
@@ -145,15 +155,18 @@ fn get_manga_list(
             .next()
             .and_then(|el| el.value().attr("href"))
             .and_then(|href| segment_after(href, "series"))
+            .filter(|id| !id.trim().is_empty())
         else {
-            log::warn!("Skipping malformed WeebCentral manga card from {url}: missing series id");
+            log::warn!("Skipping WeebCentral manga card {card} from {url}: missing series id");
             continue;
         };
 
         let status = manga
             .select(&status_selector)
             .nth(1)
-            .map_or_else(|| "".to_string(), |el| el.inner_html().trim().to_string());
+            .map(|el| el.inner_html().trim().to_string())
+            .filter(|status| !status.is_empty());
+        // A missing cover does not make an otherwise usable series invalid.
         let cover_url = manga.select(&cover_selector).next().map_or_else(
             || "".to_string(),
             |el| el.value().attr("src").unwrap_or("").to_string(),
@@ -164,22 +177,26 @@ fn get_manga_list(
             title,
             author: authors,
             genre: genres,
-            status: Some(status),
+            status,
             description: None,
             path: format!("/series/{}", manga_id),
             cover_url,
         });
     }
-    // Past the end of pagination the site returns an explicit
-    // "No results found" alert fragment — a legitimate empty, not breakage.
-    if !allow_empty
-        && !body.trim().is_empty()
-        && manga_list.is_empty()
-        && !body.contains("No results found")
-    {
-        return Err(anyhow::anyhow!(
-            "parsed 0 items from {url} — markup change?"
-        ));
+    let rejected = matched - manga_list.len();
+    if rejected > 0 {
+        log::warn!("WeebCentral listing from {url}: rejected {rejected} of {matched} cards");
+    }
+    if manga_list.is_empty() {
+        // Searches and pagination share this explicit empty-result fragment.
+        let recognized_empty = matched == 0
+            && document
+                .select(&empty_selector)
+                .any(|el| el.text().collect::<String>().trim() == "No results found");
+        anyhow::ensure!(
+            recognized_empty,
+            "WeebCentral listing from {url}: no valid manga ({matched} matched, {rejected} rejected); unrecognized or malformed response"
+        );
     }
 
     Ok(manga_list)
@@ -206,7 +223,6 @@ impl Extension for Weebcentral {
             page,
             "/search/data?limit=32&author=&text=&sort=Popularity&order=Descending&official=Any&anime=Any&adult=Any&display_mode=Full%20Display&offset=",
             &self.client,
-            false,
         )
     }
 
@@ -216,7 +232,6 @@ impl Extension for Weebcentral {
             page,
             "/search/data?limit=32&sort=Latest+Updates&order=Descending&official=Any&anime=Any&adult=Any&display_mode=Full+Display&offset=",
             &self.client,
-            false,
         )
     }
 
@@ -235,15 +250,21 @@ impl Extension for Weebcentral {
                 encode(query.unwrap_or_default().as_str()).into_owned()
             ),
             &self.client,
-            true,
         )
     }
 
     fn get_manga_detail(&self, path: String) -> Result<MangaInfo> {
         log::debug!("{NAME}: get_manga_detail path={path}");
-        let body = self.client.fetch_text(&format!("{URL}{path}"))?;
+        let body = self
+            .client
+            .fetch_text(&format!("{URL}{path}"))
+            .with_context(|| format!("WeebCentral detail request failed: {URL}{path}"))?;
 
         let manga = Html::parse_document(&body);
+        anyhow::ensure!(
+            segment_after(&path, "series").is_some_and(|id| !id.trim().is_empty()),
+            "WeebCentral detail from {URL}{path}: missing series id"
+        );
 
         let title_selector = Selector::parse("h1.hidden.md\\:block.text-2xl.font-bold").unwrap();
         let sidebar_selector: Selector = Selector::parse("ul.flex.flex-col.gap-4 > li").unwrap();
@@ -256,10 +277,12 @@ impl Extension for Weebcentral {
         .unwrap();
         let cover_selector = Selector::parse("picture img").unwrap();
 
-        let title = manga.select(&title_selector).next().map_or_else(
-            || "Unknown Title".to_string(),
-            |el| el.inner_html().trim().to_string(),
-        );
+        let title = manga
+            .select(&title_selector)
+            .next()
+            .map(|el| el.text().collect::<String>().trim().to_string())
+            .filter(|title| !title.is_empty())
+            .with_context(|| format!("WeebCentral detail from {URL}{path}: missing title"))?;
 
         let author_sec =
             find_sidebar_section(&manga, &sidebar_selector, &label_selector, "Author(s)");
@@ -282,13 +305,16 @@ impl Extension for Weebcentral {
 
         let status = status_sec
             .and_then(|section| section.select(&status_selector).next())
-            .map_or_else(|| "".to_string(), |el| el.inner_html().trim().to_string());
+            .map(|el| el.inner_html().trim().to_string())
+            .filter(|status| !status.is_empty());
 
         let description = manga
             .select(&description_selector)
             .next()
-            .map_or_else(|| "".to_string(), |el| el.inner_html().trim().to_string());
+            .map(|el| el.inner_html().trim().to_string())
+            .filter(|description| !description.is_empty());
 
+        // Covers are optional; an empty string is the host's existing representation.
         let cover_url = manga.select(&cover_selector).next().map_or_else(
             || "".to_string(),
             |el| el.value().attr("src").unwrap_or("").to_string(),
@@ -299,8 +325,8 @@ impl Extension for Weebcentral {
             title,
             author: authors,
             genre: genres,
-            status: Some(status),
-            description: Some(description),
+            status,
+            description,
             path,
             cover_url,
         })
@@ -324,23 +350,26 @@ impl Extension for Weebcentral {
         let mut chapters = vec![];
 
         for (index, chapter) in document.select(&chapter_selector).enumerate() {
-            let title = chapter.select(&title_selector).next().map_or_else(
-                || "Unknown Title".to_string(),
-                |el| el.inner_html().trim().to_string(),
-            );
+            let row = index + 1;
+            let title = chapter
+                .select(&title_selector)
+                .next()
+                .map(|el| el.text().collect::<String>().trim().to_string())
+                .filter(|title| !title.is_empty())
+                .with_context(|| {
+                    format!("WeebCentral chapter row {row} from {URL}{path}/full-chapter-list: missing title")
+                })?;
             let fallback_number = chapter_count.saturating_sub(index) as f64;
 
-            let Some(chapter_id) = chapter
+            let chapter_id = chapter
                 .select(&link_selector)
                 .next()
                 .and_then(|el| el.value().attr("href"))
                 .and_then(|href| segment_after(href, "chapters"))
-            else {
-                log::warn!(
-                    "Skipping malformed WeebCentral chapter row from {URL}{path}: missing chapter id"
-                );
-                continue;
-            };
+                .filter(|id| !id.trim().is_empty())
+                .with_context(|| {
+                    format!("WeebCentral chapter row {row} from {URL}{path}/full-chapter-list: missing chapter id")
+                })?;
 
             let upload = chapter
                 .select(&time_selector)
@@ -376,11 +405,30 @@ impl Extension for Weebcentral {
 
         let mut panels = vec![];
 
-        let panel_selector =
-            Selector::parse("section.w-full.pb-4.cursor-pointer > img.mx-auto").unwrap();
+        let section_selector = Selector::parse("section.w-full.pb-4.cursor-pointer").unwrap();
+        let panel_selector = Selector::parse(":scope > img.mx-auto").unwrap();
 
-        for panel in document.select(&panel_selector) {
-            panels.push(panel.value().attr("src").unwrap_or("").to_string());
+        for (index, section) in document.select(&section_selector).enumerate() {
+            let row = index + 1;
+            let mut images = section.select(&panel_selector).peekable();
+            anyhow::ensure!(
+                images.peek().is_some(),
+                "WeebCentral page container {row} from {URL}{path}/images: missing image"
+            );
+            for panel in images {
+                let page = panels.len() + 1;
+                let src = panel
+                    .value()
+                    .attr("src")
+                    .map(str::trim)
+                    .filter(|src| !src.is_empty())
+                    .with_context(|| {
+                        format!(
+                            "WeebCentral page {page} from {URL}{path}/images: missing image src"
+                        )
+                    })?;
+                panels.push(src.to_string());
+            }
         }
 
         if panels.is_empty() {
@@ -451,6 +499,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let weebcentral = create_test_instance();
 
@@ -468,6 +517,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let weebcentral = create_test_instance();
 
@@ -476,6 +526,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga_past_end_is_empty_not_error() {
         // The site's "No results found" alert past the last page is a
         // legitimate empty result, not a markup-change error.
@@ -486,6 +537,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let weebcentral = create_test_instance();
 
@@ -503,6 +555,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let weebcentral = create_test_instance();
 
@@ -532,6 +585,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let weebcentral = create_test_instance();
 
@@ -561,6 +615,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let weebcentral = create_test_instance();
 

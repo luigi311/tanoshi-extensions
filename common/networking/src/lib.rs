@@ -1,9 +1,8 @@
 mod ratelimit;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use cookie::time::OffsetDateTime as CookieOffsetDateTime;
-use cookie_store as _;
 use log::{debug, info, warn};
 use ratelimit::RateLimiter;
 use scraper::{Html, Selector};
@@ -284,58 +283,87 @@ pub fn build_rate_limited_flaresolverr_client_for_extension(
         .unwrap_or_else(|_| FlareClient::plain_with_rps(requests_per_second))
 }
 
-fn insert_flaresolverr_cookies_into_agent(agent: &Agent, cookies: Vec<FlareSolverrCookie>) {
+fn insert_flaresolverr_cookies_into_agent(
+    agent: &Agent,
+    solved_url: &str,
+    cookies: Vec<FlareSolverrCookie>,
+) -> Result<()> {
+    let origin =
+        Url::parse(solved_url).context("FlareSolverr returned an invalid cookie origin")?;
+    if !matches!(origin.scheme(), "http" | "https") || origin.host_str().is_none() {
+        return Err(anyhow!("FlareSolverr cookie origin must be an HTTP(S) URL"));
+    }
+    let uri = Uri::try_from(origin.as_str()).context("invalid FlareSolverr cookie origin URI")?;
+    let now = CookieOffsetDateTime::now_utc();
     let mut jar = agent.cookie_jar_lock();
-    for c in cookies {
-        let mut parts = vec![format!("{}={}", c.name, c.value)];
-
-        // Path
+    for (index, c) in cookies.into_iter().enumerate() {
+        let mut cookie = cookie::Cookie::build((c.name, c.value))
+            .secure(c.secure)
+            .http_only(c.httpOnly);
         if !c.path.is_empty() {
-            parts.push(format!("Path={}", c.path));
+            cookie = cookie.path(c.path);
         }
-        // Domain
+        // Chrome's exported cookie domains use a leading dot for domain
+        // cookies. Undotted domains (or an omitted domain) are host-only.
         if !c.domain.is_empty() {
-            parts.push(format!("Domain={}", c.domain));
-        }
-        // Secure / HttpOnly
-        if c.secure {
-            parts.push("Secure".to_string());
-        }
-        if c.httpOnly {
-            parts.push("HttpOnly".to_string());
-        }
-        // SameSite
-        match c.sameSite.as_str() {
-            "Strict" | "Lax" | "None" => parts.push(format!("SameSite={}", c.sameSite)),
-            _ => {}
-        }
-        // Expires
-        if let Some(expiry) = c.expiry
-            && let Ok(ts) = CookieOffsetDateTime::from_unix_timestamp(expiry as i64)
-        {
-            let max_age = ts.unix_timestamp() - CookieOffsetDateTime::now_utc().unix_timestamp();
-            if max_age > 0 {
-                parts.push(format!("Max-Age={}", max_age));
+            let is_domain_cookie = c.domain.starts_with('.');
+            let raw_domain = c.domain.strip_prefix('.').unwrap_or(&c.domain);
+            let Ok(domain) = url::Host::parse(raw_domain) else {
+                warn!("FlareSolverr: skipped cookie {index}: invalid domain");
+                continue;
+            };
+            if is_domain_cookie {
+                let url::Host::Domain(domain) = domain else {
+                    warn!(
+                        "FlareSolverr: skipped cookie {index}: domain cookie requires a hostname"
+                    );
+                    continue;
+                };
+                if domain.ends_with('.') || psl::suffix_str(&domain) == Some(domain.as_str()) {
+                    warn!("FlareSolverr: skipped cookie {index}: public suffix or invalid domain");
+                    continue;
+                }
+                cookie = cookie.domain(domain);
+            } else if origin.host().map(|host| host.to_owned()) != Some(domain) {
+                warn!("FlareSolverr: skipped cookie {index}: host-only origin mismatch");
+                continue;
             }
         }
-
-        let set_cookie = parts.join("; ");
-
-        // Bind parse to a relevant URI (scheme/host are used for defaults)
-        let uri_str = if c.domain.starts_with("http://") || c.domain.starts_with("https://") {
-            c.domain.clone()
-        } else {
-            format!("https://{}", c.domain)
+        if let Some(expiry) = c.expiry {
+            let Some(expires) = i64::try_from(expiry)
+                .ok()
+                .and_then(|timestamp| CookieOffsetDateTime::from_unix_timestamp(timestamp).ok())
+            else {
+                warn!("FlareSolverr: skipped cookie {index}: invalid expiry");
+                continue;
+            };
+            if expires <= now {
+                debug!("FlareSolverr: skipped cookie {index}: expired");
+                continue;
+            }
+            cookie = cookie.expires(expires);
+        }
+        cookie = match c.sameSite.as_str() {
+            "Strict" => cookie.same_site(cookie::SameSite::Strict),
+            "Lax" => cookie.same_site(cookie::SameSite::Lax),
+            "None" => cookie.same_site(cookie::SameSite::None),
+            _ => cookie,
         };
-        // Fallback: if domain is empty, use a dummy host.
-        let uri = Uri::try_from(uri_str.as_str())
-            .unwrap_or_else(|_| Uri::from_static("https://example.com"));
-
-        if let Ok(cookie) = Cookie::parse(set_cookie, &uri) {
-            let _ = jar.insert(cookie, &uri);
+        // Bind every cookie to the actual final URL. The jar validates domain
+        // matching and supplies defaults for host-only cookies and empty paths.
+        // Log rejection categories only; parser errors can contain cookie data.
+        match Cookie::parse(cookie.build().to_string(), &uri) {
+            Ok(cookie) => {
+                if jar.insert(cookie, &uri).is_err() {
+                    warn!("FlareSolverr: skipped cookie {index}: rejected by cookie jar");
+                }
+            }
+            Err(_) => {
+                warn!("FlareSolverr: skipped cookie {index}: invalid cookie or domain mismatch")
+            }
         }
     }
-    jar.release();
+    Ok(())
 }
 
 pub fn build_flaresolverr_client(
@@ -348,54 +376,28 @@ pub fn build_flaresolverr_client(
         "maxTimeout": 60000,
     });
 
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(format!("FlareSolverr error: {}", body.message).into());
-    }
-
-    let user_agent = body.solution.userAgent.clone();
-    let agent = build_ureq_agent(Some(&user_agent));
-
-    insert_flaresolverr_cookies_into_agent(&agent, body.solution.cookies);
+    let solution = request_flaresolverr(flaresolverr_url, &payload)?;
+    let agent = build_ureq_agent(Some(&solution.userAgent));
+    insert_flaresolverr_cookies_into_agent(&agent, &solution.url, solution.cookies)?;
 
     Ok(agent)
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct FlareSolverrSessionListResponse {
-    status: String,
-    #[serde(default)]
-    message: String,
     #[serde(default)]
     sessions: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct FlareSolverrSessionCreateResponse {
-    status: String,
-    #[serde(default)]
-    message: String,
     session: Option<String>,
 }
 
 fn list_flaresolverr_sessions(flaresolverr_url: &str) -> Result<Vec<String>> {
     let payload = json!({"cmd": "sessions.list"});
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrSessionListResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!(
-            "FlareSolverr sessions.list failed: {}",
-            body.message
-        ));
-    }
+    let body: FlareSolverrSessionListResponse =
+        serde_json::from_value(flaresolverr_rpc(flaresolverr_url, &payload)?)?;
     Ok(body.sessions)
 }
 
@@ -404,28 +406,100 @@ fn create_flaresolverr_session(flaresolverr_url: &str, session_name: &str) -> Re
         "cmd": "sessions.create",
         "session": session_name,
     });
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrSessionCreateResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!(
-            "FlareSolverr sessions.create failed: {}",
-            body.message
-        ));
-    }
+    let body: FlareSolverrSessionCreateResponse =
+        serde_json::from_value(flaresolverr_rpc(flaresolverr_url, &payload)?)?;
     body.session.ok_or_else(|| {
         anyhow!("FlareSolverr sessions.create succeeded without returning a session ID")
     })
 }
 
+#[derive(Debug)]
+struct MissingFlareSolverrSession(String);
+
+impl std::fmt::Display for MissingFlareSolverrSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FlareSolverr error: {}", self.0)
+    }
+}
+
+impl Error for MissingFlareSolverrSession {}
+
 fn is_missing_flaresolverr_session(error: &anyhow::Error) -> bool {
-    let message = error.to_string().to_ascii_lowercase();
-    message.contains("session")
-        && (message.contains("not found")
-            || message.contains("does not exist")
-            || message.contains("invalid"))
+    error.downcast_ref::<MissingFlareSolverrSession>().is_some()
+}
+
+/// Read the RPC envelope even on HTTP errors: FlareSolverr sends useful error
+/// messages with HTTP 500 and without a solution. Interpret messages only here.
+fn flaresolverr_rpc(fs_url: &str, payload: &JsonValue) -> Result<JsonValue> {
+    let command = payload["cmd"].as_str().unwrap_or("unknown command");
+    let mut response = ureq::post(fs_url)
+        .config()
+        .http_status_as_error(false)
+        .build()
+        .header("Content-Type", "application/json")
+        .send_json(payload)
+        .with_context(|| format!("FlareSolverr {command} RPC failed"))?;
+    let status = response.status();
+    let text = response.body_mut().read_to_string().with_context(|| {
+        format!("FlareSolverr {command} HTTP {status}: could not read response")
+    })?;
+    let envelope: JsonValue = serde_json::from_str(&text)
+        .with_context(|| format!("FlareSolverr {command} HTTP {status}: invalid JSON response"))?;
+    match envelope["status"].as_str() {
+        Some("ok") => {
+            if !status.is_success() {
+                return Err(anyhow!("FlareSolverr {command} RPC returned HTTP {status}"));
+            }
+            Ok(envelope)
+        }
+        Some("error") => {
+            let message = envelope["message"]
+                .as_str()
+                .unwrap_or("no error message supplied");
+            let lower = message.to_ascii_lowercase();
+            let error = if lower.contains("session")
+                && (lower.contains("not found")
+                    || lower.contains("does not exist")
+                    || lower.contains("doesn't exist")
+                    || lower.contains("invalid"))
+            {
+                anyhow::Error::new(MissingFlareSolverrSession(message.to_string()))
+            } else {
+                anyhow!("FlareSolverr error: {message}")
+            };
+            Err(error.context(format!(
+                "FlareSolverr {command} RPC HTTP {status}: {message}"
+            )))
+        }
+        _ => Err(anyhow!(
+            "FlareSolverr {command} HTTP {status}: missing or unknown envelope status"
+        )),
+    }
+}
+
+/// Validate reported upstream failures and residual challenges. FlareSolverr
+/// 3.5.2 synthesizes status 200, so this cannot detect unreported HTTP failures;
+/// source parsers must still validate the returned content.
+fn request_flaresolverr(fs_url: &str, payload: &JsonValue) -> Result<FlareSolverrSolution> {
+    let mut envelope = flaresolverr_rpc(fs_url, payload)?;
+    let solution: FlareSolverrSolution = serde_json::from_value(envelope["solution"].take())
+        .context("FlareSolverr returned an invalid or missing solution")?;
+    if cf_challenge_marker(solution.status, &solution.response).is_some() {
+        return Err(anyhow!(
+            "FlareSolverr returned an unsolved challenge (HTTP {}) for {}",
+            solution.status,
+            solution.url
+        ));
+    }
+    // Match the direct path's status policy after redirects.
+    if solution.status >= 400 {
+        return Err(anyhow!(
+            "FlareSolverr returned upstream HTTP {} for {}",
+            solution.status,
+            solution.url
+        ));
+    }
+    Ok(solution)
 }
 
 /// Internal, mutable state wrapped by a Mutex.
@@ -460,13 +534,14 @@ pub struct FlareClient {
 fn cf_challenge_marker(status: u16, body: &str) -> Option<&'static str> {
     let lower = body.to_ascii_lowercase();
 
-    // Cloudflare challenge pages contain characteristic markers.
+    // Cloudflare challenge pages contain characteristic markers. The generic
+    // challenge-platform script also runs passive detection on normal pages,
+    // so its presence alone must not mark a response as an unsolved challenge.
     // We require at least one challenge-specific marker AND the word "cloudflare"
     // in the body, even for 403/503 status codes. A bare 403 without CF markers
     // is just a normal "forbidden" (auth, geo-block, etc.) — re-solving won't help.
     let has_cf_markers = (lower.contains("cf-browser-verification")
         || lower.contains("cf_chl_opt")
-        || lower.contains("challenge-platform")
         || lower.contains("just a moment"))
         && lower.contains("cloudflare");
 
@@ -476,9 +551,6 @@ fn cf_challenge_marker(status: u16, body: &str) -> Option<&'static str> {
         }
         if lower.contains("cf_chl_opt") {
             return Some("cf_chl_opt");
-        }
-        if lower.contains("challenge-platform") {
-            return Some("challenge-platform");
         }
         return Some("just a moment");
     }
@@ -629,7 +701,7 @@ impl FlareClient {
         }
     }
 
-    /// Re-solve via FlareSolverr and update the internal agent + headers.
+    /// Re-solve via FlareSolverr and update the internal browser user agent and cookies.
     /// Returns Ok(true) if re-solve succeeded, Ok(false) if no FS configured.
     fn re_solve(&self) -> Result<bool> {
         let (fs_url, origin_url) = {
@@ -669,12 +741,11 @@ impl FlareClient {
             Err(error) => return Err(error),
         };
         let new_agent = build_lenient_ureq_agent(Some(&solved.user_agent));
-        insert_flaresolverr_cookies_into_agent(&new_agent, solved.cookies);
+        insert_flaresolverr_cookies_into_agent(&new_agent, &solved.url, solved.cookies)?;
 
         {
             let mut guard = self.lock_inner();
             guard.agent = new_agent;
-            guard.default_headers = solved.headers;
         }
 
         debug!("FlareClient: re-solve succeeded, agent updated");
@@ -1181,15 +1252,7 @@ fn proxy_fetch_text(fs_url: &str, session_id: Option<&str>, url: &str) -> Result
         None => json!({"cmd":"request.get","url":url,"maxTimeout":60000}),
     };
 
-    let mut resp = ureq::post(fs_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = resp.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
-    Ok(body.solution.response)
+    Ok(request_flaresolverr(fs_url, &payload)?.response)
 }
 
 fn proxy_post_form(
@@ -1220,15 +1283,7 @@ fn proxy_post_form(
         }),
     };
 
-    let mut resp = ureq::post(fs_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = resp.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
-    Ok(body.solution.response)
+    Ok(request_flaresolverr(fs_url, &payload)?.response)
 }
 
 fn proxy_post_empty(fs_url: &str, session_id: Option<&str>, url: &str) -> Result<String> {
@@ -1248,21 +1303,13 @@ fn proxy_post_empty(fs_url: &str, session_id: Option<&str>, url: &str) -> Result
         }),
     };
 
-    let mut resp = ureq::post(fs_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = resp.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
-    Ok(body.solution.response)
+    Ok(request_flaresolverr(fs_url, &payload)?.response)
 }
 
 struct Solved {
+    url: String,
     user_agent: String,
     cookies: Vec<FlareSolverrCookie>,
-    headers: Vec<(String, String)>,
 }
 
 fn solve_with_flaresolverr(
@@ -1275,32 +1322,13 @@ fn solve_with_flaresolverr(
         None => json!({"cmd":"request.get","url":url,"maxTimeout":60000}),
     };
 
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
+    let solution = request_flaresolverr(flaresolverr_url, &payload)?;
 
-    let mut hdrs: Vec<(String, String)> = vec![];
-    if let Some(obj) = body.solution.headers.as_object() {
-        for (k, v) in obj {
-            if let Some(s) = v.as_str() {
-                if !k.eq_ignore_ascii_case("set-cookie") {
-                    hdrs.push((k.to_string(), s.to_string()));
-                }
-            } else {
-                hdrs.push((k.to_string(), v.to_string()));
-            }
-        }
-    }
-
+    // Solution headers describe the browser response, not future requests.
     Ok(Solved {
-        user_agent: body.solution.userAgent.clone(),
-        cookies: body.solution.cookies,
-        headers: hdrs,
+        url: solution.url,
+        user_agent: solution.userAgent,
+        cookies: solution.cookies,
     })
 }
 
@@ -1535,10 +1563,10 @@ mod test {
     }
 
     #[test]
-    fn test_cf_challenge_detection_200_challenge_platform() {
+    fn test_cf_challenge_detection_200_passive_script_not_flagged() {
         let body = r#"<html><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>
             cloudflare</html>"#;
-        assert!(looks_like_cf_challenge(200, body));
+        assert!(!looks_like_cf_challenge(200, body));
     }
 
     #[test]
@@ -1715,58 +1743,287 @@ mod test {
         assert_eq!(parsed.solution.cookies[2].expiry, Some(1800000000));
     }
 
+    #[test]
+    fn test_solver_response_outcomes() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        // Synthetic wire responses: no website, browser, or environment changes.
+        let solution = |status, body: &str| {
+            json!({
+                "status": "ok", "message": "", "startTimestamp": 0,
+                "endTimestamp": 0, "version": "3.5.2",
+                "solution": {"url": "https://redirected.example.test/final", "status": status,
+                    "cookies": [{"domain": "", "expiry": null, "httpOnly": true,
+                        "name": "session", "value": "test-value", "path": "/", "sameSite": "Lax", "secure": true}], "userAgent": "TestUA",
+                    "headers": {"Content-Type": "text/html", "Content-Length": "9000", "X-Response-Only": "do-not-replay"},
+                    "response": body}
+            })
+        };
+        let cases = [
+            (200, solution(200, "content"), None),
+            (200, solution(404, "not found"), Some("HTTP 404")),
+            (200, solution(503, "unavailable"), Some("HTTP 503")),
+            (
+                200,
+                solution(200, "Cloudflare cf_chl_opt"),
+                Some("challenge"),
+            ),
+            (
+                200,
+                json!({"status": "error", "message": "solver timeout"}),
+                Some("solver timeout"),
+            ),
+            (
+                500,
+                json!({"status": "error", "message": "The session doesn't exist."}),
+                Some("The session doesn't exist."),
+            ),
+            (
+                200,
+                json!({"status": "ok", "message": "", "solution": null}),
+                Some("solution"),
+            ),
+            (500, solution(200, "content"), Some("HTTP 500")),
+        ];
+        for (http_status, envelope, expected_error) in cases {
+            for method in ["GET", "POST form", "POST empty", "re-solve"] {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                listener.set_nonblocking(true).unwrap();
+                let endpoint = format!("http://{}", listener.local_addr().unwrap());
+                let body = envelope.to_string();
+                let worker = std::thread::spawn(move || {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    let mut stream = loop {
+                        match listener.accept() {
+                            Ok((stream, _)) => break stream,
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                assert!(Instant::now() < deadline, "solver stub accept timed out");
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(e) => panic!("solver stub accept failed: {e}"),
+                        }
+                    };
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    stream
+                        .set_write_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    let mut request = Vec::new();
+                    let mut byte = [0];
+                    while !request.ends_with(b"\r\n\r\n") {
+                        stream.read_exact(&mut byte).unwrap();
+                        request.push(byte[0]);
+                        assert!(request.len() < 16384, "oversized request headers");
+                    }
+                    let headers = String::from_utf8(request).unwrap();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    assert!(length < 16384);
+                    let mut payload = vec![0; length];
+                    stream.read_exact(&mut payload).unwrap();
+                    let payload: JsonValue = serde_json::from_slice(&payload).unwrap();
+                    write!(stream, "HTTP/1.1 {http_status} Stub\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                    payload
+                });
+                let result = match method {
+                    "GET" => {
+                        proxy_fetch_text(&endpoint, Some("test-session"), "https://example.test")
+                    }
+                    "POST form" => proxy_post_form(
+                        &endpoint,
+                        Some("test-session"),
+                        "https://example.test",
+                        &[("q", "a&b")],
+                    ),
+                    "POST empty" => {
+                        proxy_post_empty(&endpoint, Some("test-session"), "https://example.test")
+                    }
+                    _ => {
+                        let client = FlareClient::plain();
+                        {
+                            let mut inner = client.lock_inner();
+                            inner.flaresolverr_url = Some(endpoint.clone());
+                            inner.origin_url = "https://example.test".to_string();
+                            inner.session_id = Some("test-session".to_string());
+                        }
+                        client.re_solve().and_then(|solved| {
+                            if !solved || !client.lock_inner().default_headers.is_empty() {
+                                return Err(anyhow!(
+                                    "response headers must not become request defaults"
+                                ));
+                            }
+                            if client
+                                .lock_inner()
+                                .agent
+                                .cookie_jar_lock()
+                                .get("redirected.example.test", "/", "session")
+                                .is_none()
+                            {
+                                return Err(anyhow!("cookie must use the final solved URL"));
+                            }
+                            Ok("content".to_string())
+                        })
+                    }
+                };
+                let payload = worker.join().unwrap();
+                assert_eq!(payload["session"], "test-session");
+                assert_eq!(payload["url"], "https://example.test");
+                assert_eq!(
+                    payload["cmd"],
+                    if method == "GET" || method == "re-solve" {
+                        "request.get"
+                    } else {
+                        "request.post"
+                    }
+                );
+                if method == "POST form" {
+                    assert_eq!(payload["postData"], "q=a%26b");
+                }
+                if method == "POST empty" {
+                    assert_eq!(payload["postData"], "");
+                }
+                match expected_error {
+                    Some(expected) => {
+                        let error = result.expect_err("solver failure must not become content");
+                        assert!(
+                            format!("{error:#}").contains(expected),
+                            "{method}: {error:#}"
+                        );
+                        assert_eq!(
+                            is_missing_flaresolverr_session(&error),
+                            expected == "The session doesn't exist."
+                        );
+                    }
+                    None => assert_eq!(result.unwrap(), "content"),
+                }
+            }
+        }
+    }
+
     // --- insert_flaresolverr_cookies_into_agent ----------------------------
 
     #[test]
     fn test_insert_cookies_into_agent() {
         let agent = build_ureq_agent(Some("TestUA"));
+        let origin = "https://reader.example.com/chapters/1";
+        let mut scoped = mock_cookie("scoped", "path", ".example.com");
+        scoped.path = "/chapters".to_string();
+        let mut expired = mock_cookie("expired", "must-not-send", ".example.com");
+        expired.expiry = Some(1);
+        let mut invalid_expiry = expired.clone();
+        invalid_expiry.name = "invalid_expiry".to_string();
+        invalid_expiry.expiry = Some(u64::MAX);
         let cookies = vec![
-            mock_cookie("cf_clearance", "test_value", ".example.com"),
-            mock_cookie("session_id", "sess_abc", ".example.com"),
+            mock_cookie("domain", "old", ".example.com"),
+            mock_cookie("host", "host-only", "reader.example.com"),
+            scoped,
+            expired,
+            invalid_expiry,
+            mock_cookie("suffix", "must-not-send", ".com"),
+            mock_cookie("foreign", "must-not-send", ".other.com"),
+            mock_cookie("foreign_host", "must-not-send", "other.com"),
         ];
+        insert_flaresolverr_cookies_into_agent(&agent, origin, cookies).unwrap();
+        insert_flaresolverr_cookies_into_agent(
+            &agent,
+            origin,
+            vec![mock_cookie("domain", "new", ".EXAMPLE.COM")],
+        )
+        .unwrap();
+        assert_eq!(agent.cookie_jar_lock().iter().count(), 3);
 
-        // Should not panic — verifies the full cookie parsing + insertion pipeline
-        insert_flaresolverr_cookies_into_agent(&agent, cookies);
-
-        // Insert again with different values to verify overwrite doesn't panic
-        let cookies2 = vec![mock_cookie("cf_clearance", "new_value", ".example.com")];
-        insert_flaresolverr_cookies_into_agent(&agent, cookies2);
+        // Inspect the jar's actual stored scope through cookie_store's request
+        // matching API, the same API ureq uses to build its Cookie header.
+        let mut saved = Vec::new();
+        agent.cookie_jar_lock().save_json(&mut saved).unwrap();
+        let store = cookie_store::serde::json::load(saved.as_slice()).unwrap();
+        for (url, expected) in [
+            (
+                origin,
+                vec![("domain", "new"), ("host", "host-only"), ("scoped", "path")],
+            ),
+            (
+                "https://cdn.example.com/chapters/2",
+                vec![("domain", "new"), ("scoped", "path")],
+            ),
+            ("https://child.reader.example.com/", vec![("domain", "new")]),
+            (
+                "https://reader.example.com/chapters-extra",
+                vec![("domain", "new"), ("host", "host-only")],
+            ),
+            ("http://reader.example.com/chapters/1", vec![]),
+            ("https://other.com/chapters/1", vec![]),
+        ] {
+            let mut actual: Vec<_> = store
+                .get_request_values(&Url::parse(url).unwrap())
+                .collect();
+            actual.sort_unstable();
+            assert_eq!(actual, expected, "cookie selection for {url}");
+        }
     }
 
     #[test]
-    fn test_insert_cookies_domain_with_https_prefix() {
+    fn test_insert_cookies_rejects_invalid_and_public_suffix_domains() {
+        for (origin, domain) in [
+            ("https://cdn.example.com", "https://cdn.example.com"),
+            ("https://example.co.uk", ".co.uk"),
+            ("https://tenant.github.io", ".github.io"),
+            ("https://foo.ck", ".ck"),
+            ("https://tenant.foo.ck", ".foo.ck"),
+        ] {
+            let agent = build_ureq_agent(None);
+            insert_flaresolverr_cookies_into_agent(
+                &agent,
+                origin,
+                vec![mock_cookie("token", "must-not-send", domain)],
+            )
+            .unwrap();
+            assert_eq!(
+                agent.cookie_jar_lock().iter().count(),
+                0,
+                "accepted {domain}"
+            );
+        }
+        // Public-suffix exception rules must still permit registrable domains.
         let agent = build_ureq_agent(None);
-        let cookies = vec![FlareSolverrCookie {
-            domain: "https://cdn.example.com".to_string(),
-            expiry: None,
-            httpOnly: false,
-            name: "token".to_string(),
-            path: "/".to_string(),
-            sameSite: "".to_string(),
-            secure: false,
-            value: "abc".to_string(),
-        }];
-
-        // Should not panic even with an https:// prefixed domain
-        insert_flaresolverr_cookies_into_agent(&agent, cookies);
+        insert_flaresolverr_cookies_into_agent(
+            &agent,
+            "https://www.ck/",
+            vec![mock_cookie("token", "allowed", ".www.ck")],
+        )
+        .unwrap();
+        assert_eq!(agent.cookie_jar_lock().iter().count(), 1);
     }
 
     #[test]
-    fn test_insert_cookies_empty_domain_fallback() {
+    fn test_insert_cookies_empty_domain_uses_solved_origin() {
         let agent = build_ureq_agent(None);
-        let cookies = vec![FlareSolverrCookie {
-            domain: "".to_string(),
-            expiry: None,
-            httpOnly: false,
-            name: "x".to_string(),
-            path: "/".to_string(),
-            sameSite: "".to_string(),
-            secure: false,
-            value: "y".to_string(),
-        }];
-
-        // Should not panic — falls back to https://example.com
-        insert_flaresolverr_cookies_into_agent(&agent, cookies);
+        let mut cookie = mock_cookie("session", "value", "");
+        cookie.expiry = None;
+        cookie.path.clear();
+        insert_flaresolverr_cookies_into_agent(
+            &agent,
+            "https://redirected.example.org/reader/chapter",
+            vec![cookie],
+        )
+        .unwrap();
+        let jar = agent.cookie_jar_lock();
+        assert_eq!(jar.iter().count(), 1);
+        assert_eq!(
+            jar.get("redirected.example.org", "/reader", "session")
+                .unwrap()
+                .value(),
+            "value"
+        );
+        assert!(jar.get("example.com", "/", "session").is_none());
     }
 
     // --- build_ureq_agent --------------------------------------------------
@@ -2185,7 +2442,7 @@ mod test {
     // =======================================================================
 
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_nowsecure() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2201,7 +2458,7 @@ mod test {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_openai() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2220,7 +2477,7 @@ mod test {
     ///   2. fetch_text succeeds via the direct path or lazy solve
     ///   3. The returned HTML is the real page, not a challenge
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_direct_first_fetch() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2248,7 +2505,7 @@ mod test {
 
     /// Integration: FlareClient.fetch_bytes for image fetching
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_fetch_bytes() {
         // Use a known public image URL (not CF-protected, just validates
         // the fetch_bytes pipeline works end-to-end).
@@ -2261,7 +2518,7 @@ mod test {
 
     /// Integration: RateLimitedAgent.fetch_bytes
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_rate_limited_agent_fetch_bytes() {
         let agent = build_rate_limited_ureq_agent(None, Some(5.0));
         let bytes = agent
@@ -2273,7 +2530,7 @@ mod test {
 
     /// Integration: solve_with_flaresolverr returns proper Solved struct
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_solve_with_flaresolverr_struct() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2296,7 +2553,7 @@ mod test {
 
     /// Integration: FlareClient.post_form_text with direct-first strategy
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_post_form() {
         // httpbin echoes back form data — validates the POST pipeline
         let client = FlareClient::plain();
@@ -2315,7 +2572,7 @@ mod test {
 
     /// Integration: FlareClient.post_empty_text
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_post_empty() {
         let client = FlareClient::plain();
         let body = client
@@ -2328,7 +2585,7 @@ mod test {
 
     /// Integration: FlareClient does not create a session by default
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_session_not_created_by_default() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2343,7 +2600,7 @@ mod test {
 
     /// Integration: multiple sequential fetches reuse the same agent (direct path)
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_multiple_fetches_reuse_agent() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
