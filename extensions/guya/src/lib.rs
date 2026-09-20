@@ -46,23 +46,34 @@ impl Extension for Guya {
         }
     }
 
-    fn get_popular_manga(&self, _page: i64) -> Result<Vec<MangaInfo>> {
-        log::debug!("{NAME}: get_popular_manga");
+    fn get_popular_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
+        log::debug!("{NAME}: get_popular_manga page={page}");
+        // Guya returns its complete catalog in one response. As with the other
+        // sources, page numbers below one retain first-page behavior.
+        if page > 1 {
+            return Ok(vec![]);
+        }
         get_manga_list(URL, ID, &self.client)
     }
 
-    fn get_latest_manga(&self, _page: i64) -> Result<Vec<MangaInfo>> {
-        log::debug!("{NAME}: get_latest_manga");
+    fn get_latest_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
+        log::debug!("{NAME}: get_latest_manga page={page}");
+        if page > 1 {
+            return Ok(vec![]);
+        }
         get_manga_list(URL, ID, &self.client)
     }
 
     fn search_manga(
         &self,
-        _page: i64,
+        page: i64,
         query: Option<String>,
         _filters: Option<Vec<Input>>,
     ) -> Result<Vec<MangaInfo>> {
-        log::debug!("{NAME}: search_manga query={query:?}");
+        log::debug!("{NAME}: search_manga page={page} query={query:?}");
+        if page > 1 {
+            return Ok(vec![]);
+        }
         let manga = get_manga_list(URL, ID, &self.client)?;
 
         if let Some(query) = query {
