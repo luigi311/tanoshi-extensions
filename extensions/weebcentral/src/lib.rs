@@ -40,6 +40,15 @@ fn parse_chapter_number(title: &str) -> Option<f64> {
     number.parse().ok()
 }
 
+fn segment_after<'a>(href: &'a str, marker: &str) -> Option<&'a str> {
+    href.split('?')
+        .next()?
+        .split('/')
+        .skip_while(|segment| *segment != marker)
+        .nth(1)
+        .filter(|segment| !segment.is_empty())
+}
+
 fn find_sidebar_section<'a>(
     document: &'a Html,
     sidebar_selector: &Selector,
@@ -131,12 +140,15 @@ fn get_manga_list(
             }
         }
 
-        let manga_url = manga.select(&url_selector).next().map_or_else(
-            || "".to_string(),
-            |el| el.value().attr("href").unwrap_or("").to_string(),
-        );
-
-        let manga_id = manga_url.split('/').nth(4).unwrap_or("").to_string();
+        let Some(manga_id) = manga
+            .select(&url_selector)
+            .next()
+            .and_then(|el| el.value().attr("href"))
+            .and_then(|href| segment_after(href, "series"))
+        else {
+            log::warn!("Skipping malformed WeebCentral manga card from {url}: missing series id");
+            continue;
+        };
 
         let status = manga
             .select(&status_selector)
@@ -219,7 +231,7 @@ impl Extension for Weebcentral {
         get_manga_list(
             page,
             &format!(
-                "/search/data?author=&text={}&sort=Latest%20Updates&order=Descending&official=Any&anime=Any&adult=Any&display_mode=Full%20Display&offset=",
+                "/search/data?limit=32&author=&text={}&sort=Latest%20Updates&order=Descending&official=Any&anime=Any&adult=Any&display_mode=Full%20Display&offset=",
                 encode(query.unwrap_or_default().as_str()).into_owned()
             ),
             &self.client,
@@ -318,10 +330,17 @@ impl Extension for Weebcentral {
             );
             let fallback_number = chapter_count.saturating_sub(index) as f64;
 
-            let link = chapter.select(&link_selector).next().map_or_else(
-                || "".to_string(),
-                |el| el.value().attr("href").unwrap_or("").to_string(),
-            );
+            let Some(chapter_id) = chapter
+                .select(&link_selector)
+                .next()
+                .and_then(|el| el.value().attr("href"))
+                .and_then(|href| segment_after(href, "chapters"))
+            else {
+                log::warn!(
+                    "Skipping malformed WeebCentral chapter row from {URL}{path}: missing chapter id"
+                );
+                continue;
+            };
 
             let upload = chapter
                 .select(&time_selector)
@@ -331,7 +350,7 @@ impl Extension for Weebcentral {
             chapters.push(ChapterInfo {
                 source_id: ID,
                 title: title.clone(),
-                path: format!("/chapters/{}", link.split('/').nth(4).unwrap_or("")),
+                path: format!("/chapters/{}", chapter_id),
                 number: parse_chapter_number(&title).unwrap_or(fallback_number),
                 scanlator: None,
                 uploaded: parse_upload_timestamp(&upload),
@@ -489,8 +508,13 @@ mod test {
 
         assert!(!res.is_empty());
         assert!(
-            res.iter().all(|c| c.path.starts_with("/chapters/")),
-            "chapter paths should look like /chapters/<id>"
+            res.iter()
+                .all(|c| c
+                    .path
+                    .strip_prefix("/chapters/")
+                    .is_some_and(|id| !id.is_empty())),
+            "chapter paths should look like /chapters/<id> with a non-empty id, got {:?}",
+            res.iter().map(|c| c.path.clone()).collect::<Vec<_>>()
         );
         let uploaded_count = res.iter().filter(|c| c.uploaded > 0).count();
         assert!(
