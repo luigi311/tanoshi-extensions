@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use chrono::DateTime;
 use lazy_static::lazy_static;
 use networking::{
@@ -250,6 +250,35 @@ fn trimmed_element_text(element: ElementRef<'_>) -> Option<String> {
     (!text.is_empty()).then(|| text.to_string())
 }
 
+fn validate_gallery(body: &str, path: &str) -> Result<()> {
+    let expected_id = path
+        .trim_matches('/')
+        .strip_prefix("g/")
+        .filter(|id| !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit()))
+        .with_context(|| format!("invalid NHentai gallery path: {path}"))?;
+    let document = Html::parse_document(body);
+    let id_selector = Selector::parse("#info h3#gallery_id").unwrap();
+    let title_selector = Selector::parse("#info h1.title > .pretty").unwrap();
+    let displayed_id = document
+        .select(&id_selector)
+        .next()
+        .and_then(trimmed_element_text)
+        .with_context(|| format!("NHentai gallery {URL}{path}: missing gallery id"))?;
+    anyhow::ensure!(
+        displayed_id.trim_start_matches('#').trim() == expected_id,
+        "NHentai gallery {URL}{path}: response gallery id does not match requested id"
+    );
+    anyhow::ensure!(
+        document
+            .select(&title_selector)
+            .next()
+            .and_then(trimmed_element_text)
+            .is_some(),
+        "NHentai gallery {URL}{path}: missing title"
+    );
+    Ok(())
+}
+
 fn parse_uploaded_timestamp(value: &str) -> Option<i64> {
     DateTime::parse_from_rfc3339(value)
         .ok()
@@ -334,7 +363,10 @@ impl NHentai {
         let body = self
             .client
             .fetch_text(&url)
-            .map_err(|e| anyhow!(e.to_string()))?;
+            .with_context(|| format!("NHentai gallery request failed: {url}"))?;
+        // Both details and the synthetic chapter must refer to a real gallery.
+        // Reject unexpected responses before they can populate the shared cache.
+        validate_gallery(&body, path)?;
         let mut cache = self
             .gallery_cache
             .lock()

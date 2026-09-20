@@ -876,7 +876,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nhentai"
-version = "0.5.12"
+version = "0.5.13"
 dependencies = [
  "anyhow",
  "chrono",
