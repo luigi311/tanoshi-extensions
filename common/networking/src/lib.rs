@@ -1,6 +1,6 @@
 mod ratelimit;
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use cookie::time::OffsetDateTime as CookieOffsetDateTime;
 use cookie_store as _;
@@ -348,54 +348,28 @@ pub fn build_flaresolverr_client(
         "maxTimeout": 60000,
     });
 
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(format!("FlareSolverr error: {}", body.message).into());
-    }
-
-    let user_agent = body.solution.userAgent.clone();
-    let agent = build_ureq_agent(Some(&user_agent));
-
-    insert_flaresolverr_cookies_into_agent(&agent, body.solution.cookies);
+    let solution = request_flaresolverr(flaresolverr_url, &payload)?;
+    let agent = build_ureq_agent(Some(&solution.userAgent));
+    insert_flaresolverr_cookies_into_agent(&agent, solution.cookies);
 
     Ok(agent)
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct FlareSolverrSessionListResponse {
-    status: String,
-    #[serde(default)]
-    message: String,
     #[serde(default)]
     sessions: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct FlareSolverrSessionCreateResponse {
-    status: String,
-    #[serde(default)]
-    message: String,
     session: Option<String>,
 }
 
 fn list_flaresolverr_sessions(flaresolverr_url: &str) -> Result<Vec<String>> {
     let payload = json!({"cmd": "sessions.list"});
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrSessionListResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!(
-            "FlareSolverr sessions.list failed: {}",
-            body.message
-        ));
-    }
+    let body: FlareSolverrSessionListResponse =
+        serde_json::from_value(flaresolverr_rpc(flaresolverr_url, &payload)?)?;
     Ok(body.sessions)
 }
 
@@ -404,28 +378,100 @@ fn create_flaresolverr_session(flaresolverr_url: &str, session_name: &str) -> Re
         "cmd": "sessions.create",
         "session": session_name,
     });
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrSessionCreateResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!(
-            "FlareSolverr sessions.create failed: {}",
-            body.message
-        ));
-    }
+    let body: FlareSolverrSessionCreateResponse =
+        serde_json::from_value(flaresolverr_rpc(flaresolverr_url, &payload)?)?;
     body.session.ok_or_else(|| {
         anyhow!("FlareSolverr sessions.create succeeded without returning a session ID")
     })
 }
 
+#[derive(Debug)]
+struct MissingFlareSolverrSession(String);
+
+impl std::fmt::Display for MissingFlareSolverrSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FlareSolverr error: {}", self.0)
+    }
+}
+
+impl Error for MissingFlareSolverrSession {}
+
 fn is_missing_flaresolverr_session(error: &anyhow::Error) -> bool {
-    let message = error.to_string().to_ascii_lowercase();
-    message.contains("session")
-        && (message.contains("not found")
-            || message.contains("does not exist")
-            || message.contains("invalid"))
+    error.downcast_ref::<MissingFlareSolverrSession>().is_some()
+}
+
+/// Read the RPC envelope even on HTTP errors: FlareSolverr sends useful error
+/// messages with HTTP 500 and without a solution. Interpret messages only here.
+fn flaresolverr_rpc(fs_url: &str, payload: &JsonValue) -> Result<JsonValue> {
+    let command = payload["cmd"].as_str().unwrap_or("unknown command");
+    let mut response = ureq::post(fs_url)
+        .config()
+        .http_status_as_error(false)
+        .build()
+        .header("Content-Type", "application/json")
+        .send_json(payload)
+        .with_context(|| format!("FlareSolverr {command} RPC failed"))?;
+    let status = response.status();
+    let text = response.body_mut().read_to_string().with_context(|| {
+        format!("FlareSolverr {command} HTTP {status}: could not read response")
+    })?;
+    let envelope: JsonValue = serde_json::from_str(&text)
+        .with_context(|| format!("FlareSolverr {command} HTTP {status}: invalid JSON response"))?;
+    match envelope["status"].as_str() {
+        Some("ok") => {
+            if !status.is_success() {
+                return Err(anyhow!("FlareSolverr {command} RPC returned HTTP {status}"));
+            }
+            Ok(envelope)
+        }
+        Some("error") => {
+            let message = envelope["message"]
+                .as_str()
+                .unwrap_or("no error message supplied");
+            let lower = message.to_ascii_lowercase();
+            let error = if lower.contains("session")
+                && (lower.contains("not found")
+                    || lower.contains("does not exist")
+                    || lower.contains("doesn't exist")
+                    || lower.contains("invalid"))
+            {
+                anyhow::Error::new(MissingFlareSolverrSession(message.to_string()))
+            } else {
+                anyhow!("FlareSolverr error: {message}")
+            };
+            Err(error.context(format!(
+                "FlareSolverr {command} RPC HTTP {status}: {message}"
+            )))
+        }
+        _ => Err(anyhow!(
+            "FlareSolverr {command} HTTP {status}: missing or unknown envelope status"
+        )),
+    }
+}
+
+/// Validate reported upstream failures and residual challenges. FlareSolverr
+/// 3.5.2 synthesizes status 200, so this cannot detect unreported HTTP failures;
+/// source parsers must still validate the returned content.
+fn request_flaresolverr(fs_url: &str, payload: &JsonValue) -> Result<FlareSolverrSolution> {
+    let mut envelope = flaresolverr_rpc(fs_url, payload)?;
+    let solution: FlareSolverrSolution = serde_json::from_value(envelope["solution"].take())
+        .context("FlareSolverr returned an invalid or missing solution")?;
+    if cf_challenge_marker(solution.status, &solution.response).is_some() {
+        return Err(anyhow!(
+            "FlareSolverr returned an unsolved challenge (HTTP {}) for {}",
+            solution.status,
+            solution.url
+        ));
+    }
+    // Match the direct path's status policy after redirects.
+    if solution.status >= 400 {
+        return Err(anyhow!(
+            "FlareSolverr returned upstream HTTP {} for {}",
+            solution.status,
+            solution.url
+        ));
+    }
+    Ok(solution)
 }
 
 /// Internal, mutable state wrapped by a Mutex.
@@ -1181,15 +1227,7 @@ fn proxy_fetch_text(fs_url: &str, session_id: Option<&str>, url: &str) -> Result
         None => json!({"cmd":"request.get","url":url,"maxTimeout":60000}),
     };
 
-    let mut resp = ureq::post(fs_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = resp.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
-    Ok(body.solution.response)
+    Ok(request_flaresolverr(fs_url, &payload)?.response)
 }
 
 fn proxy_post_form(
@@ -1220,15 +1258,7 @@ fn proxy_post_form(
         }),
     };
 
-    let mut resp = ureq::post(fs_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = resp.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
-    Ok(body.solution.response)
+    Ok(request_flaresolverr(fs_url, &payload)?.response)
 }
 
 fn proxy_post_empty(fs_url: &str, session_id: Option<&str>, url: &str) -> Result<String> {
@@ -1248,15 +1278,7 @@ fn proxy_post_empty(fs_url: &str, session_id: Option<&str>, url: &str) -> Result
         }),
     };
 
-    let mut resp = ureq::post(fs_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = resp.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
-    Ok(body.solution.response)
+    Ok(request_flaresolverr(fs_url, &payload)?.response)
 }
 
 struct Solved {
@@ -1275,17 +1297,10 @@ fn solve_with_flaresolverr(
         None => json!({"cmd":"request.get","url":url,"maxTimeout":60000}),
     };
 
-    let mut response = ureq::post(flaresolverr_url)
-        .header("Content-Type", "application/json")
-        .send_json(&payload)?;
-    let text = response.body_mut().read_to_string()?;
-    let body: FlareSolverrResponse = serde_json::from_str(&text)?;
-    if body.status != "ok" {
-        return Err(anyhow!("FlareSolverr error: {}", body.message));
-    }
+    let solution = request_flaresolverr(flaresolverr_url, &payload)?;
 
     let mut hdrs: Vec<(String, String)> = vec![];
-    if let Some(obj) = body.solution.headers.as_object() {
+    if let Some(obj) = solution.headers.as_object() {
         for (k, v) in obj {
             if let Some(s) = v.as_str() {
                 if !k.eq_ignore_ascii_case("set-cookie") {
@@ -1298,8 +1313,8 @@ fn solve_with_flaresolverr(
     }
 
     Ok(Solved {
-        user_agent: body.solution.userAgent.clone(),
-        cookies: body.solution.cookies,
+        user_agent: solution.userAgent.clone(),
+        cookies: solution.cookies,
         headers: hdrs,
     })
 }
@@ -1713,6 +1728,140 @@ mod test {
         assert_eq!(parsed.solution.cookies[1].sameSite, "Strict");
         assert_eq!(parsed.solution.cookies[2].domain, "other.com");
         assert_eq!(parsed.solution.cookies[2].expiry, Some(1800000000));
+    }
+
+    #[test]
+    fn test_solver_response_outcomes() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        // Synthetic wire responses: no website, browser, or environment changes.
+        let solution = |status, body: &str| {
+            json!({
+                "status": "ok", "message": "", "startTimestamp": 0,
+                "endTimestamp": 0, "version": "3.5.2",
+                "solution": {"url": "https://example.test/final", "status": status,
+                    "cookies": [], "userAgent": "TestUA", "headers": {}, "response": body}
+            })
+        };
+        let cases = [
+            (200, solution(200, "content"), None),
+            (200, solution(404, "not found"), Some("HTTP 404")),
+            (200, solution(503, "unavailable"), Some("HTTP 503")),
+            (
+                200,
+                solution(200, "Cloudflare cf_chl_opt"),
+                Some("challenge"),
+            ),
+            (
+                200,
+                json!({"status": "error", "message": "solver timeout"}),
+                Some("solver timeout"),
+            ),
+            (
+                500,
+                json!({"status": "error", "message": "The session doesn't exist."}),
+                Some("The session doesn't exist."),
+            ),
+            (
+                200,
+                json!({"status": "ok", "message": "", "solution": null}),
+                Some("solution"),
+            ),
+            (500, solution(200, "content"), Some("HTTP 500")),
+        ];
+        for (http_status, envelope, expected_error) in cases {
+            for method in ["GET", "POST form", "POST empty"] {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                listener.set_nonblocking(true).unwrap();
+                let endpoint = format!("http://{}", listener.local_addr().unwrap());
+                let body = envelope.to_string();
+                let worker = std::thread::spawn(move || {
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    let mut stream = loop {
+                        match listener.accept() {
+                            Ok((stream, _)) => break stream,
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                                assert!(Instant::now() < deadline, "solver stub accept timed out");
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(e) => panic!("solver stub accept failed: {e}"),
+                        }
+                    };
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    stream
+                        .set_write_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    let mut request = Vec::new();
+                    let mut byte = [0];
+                    while !request.ends_with(b"\r\n\r\n") {
+                        stream.read_exact(&mut byte).unwrap();
+                        request.push(byte[0]);
+                        assert!(request.len() < 16384, "oversized request headers");
+                    }
+                    let headers = String::from_utf8(request).unwrap();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    assert!(length < 16384);
+                    let mut payload = vec![0; length];
+                    stream.read_exact(&mut payload).unwrap();
+                    let payload: JsonValue = serde_json::from_slice(&payload).unwrap();
+                    write!(stream, "HTTP/1.1 {http_status} Stub\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                    payload
+                });
+                let result = match method {
+                    "GET" => {
+                        proxy_fetch_text(&endpoint, Some("test-session"), "https://example.test")
+                    }
+                    "POST form" => proxy_post_form(
+                        &endpoint,
+                        Some("test-session"),
+                        "https://example.test",
+                        &[("q", "a&b")],
+                    ),
+                    _ => proxy_post_empty(&endpoint, Some("test-session"), "https://example.test"),
+                };
+                let payload = worker.join().unwrap();
+                assert_eq!(payload["session"], "test-session");
+                assert_eq!(payload["url"], "https://example.test");
+                assert_eq!(
+                    payload["cmd"],
+                    if method == "GET" {
+                        "request.get"
+                    } else {
+                        "request.post"
+                    }
+                );
+                if method == "POST form" {
+                    assert_eq!(payload["postData"], "q=a%26b");
+                }
+                if method == "POST empty" {
+                    assert_eq!(payload["postData"], "");
+                }
+                match expected_error {
+                    Some(expected) => {
+                        let error = result.expect_err("solver failure must not become content");
+                        assert!(
+                            format!("{error:#}").contains(expected),
+                            "{method}: {error:#}"
+                        );
+                        assert_eq!(
+                            is_missing_flaresolverr_session(&error),
+                            expected == "The session doesn't exist."
+                        );
+                    }
+                    None => assert_eq!(result.unwrap(), "content"),
+                }
+            }
+        }
     }
 
     // --- insert_flaresolverr_cookies_into_agent ----------------------------
