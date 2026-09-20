@@ -2185,7 +2185,7 @@ mod test {
     // =======================================================================
 
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_nowsecure() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2201,7 +2201,7 @@ mod test {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_openai() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2220,7 +2220,7 @@ mod test {
     ///   2. fetch_text succeeds via the direct path or lazy solve
     ///   3. The returned HTML is the real page, not a challenge
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_direct_first_fetch() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2248,7 +2248,7 @@ mod test {
 
     /// Integration: FlareClient.fetch_bytes for image fetching
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_fetch_bytes() {
         // Use a known public image URL (not CF-protected, just validates
         // the fetch_bytes pipeline works end-to-end).
@@ -2261,7 +2261,7 @@ mod test {
 
     /// Integration: RateLimitedAgent.fetch_bytes
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_rate_limited_agent_fetch_bytes() {
         let agent = build_rate_limited_ureq_agent(None, Some(5.0));
         let bytes = agent
@@ -2273,7 +2273,7 @@ mod test {
 
     /// Integration: solve_with_flaresolverr returns proper Solved struct
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_solve_with_flaresolverr_struct() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2296,7 +2296,7 @@ mod test {
 
     /// Integration: FlareClient.post_form_text with direct-first strategy
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_post_form() {
         // httpbin echoes back form data — validates the POST pipeline
         let client = FlareClient::plain();
@@ -2315,7 +2315,7 @@ mod test {
 
     /// Integration: FlareClient.post_empty_text
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_post_empty() {
         let client = FlareClient::plain();
         let body = client
@@ -2328,7 +2328,7 @@ mod test {
 
     /// Integration: FlareClient does not create a session by default
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_session_not_created_by_default() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();
@@ -2343,7 +2343,7 @@ mod test {
 
     /// Integration: multiple sequential fetches reuse the same agent (direct path)
     #[test]
-    #[ignore]
+    #[ignore = "live source check"]
     fn test_flare_client_multiple_fetches_reuse_agent() {
         let _guard = env_test_guard();
         let fs_url = flaresolverr_url();

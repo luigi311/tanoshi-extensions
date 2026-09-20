@@ -129,6 +129,7 @@ mod test {
     const COMPLETED_CHAPTER_COUNT: usize = 70;
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -146,6 +147,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -154,6 +156,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -164,6 +167,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -174,6 +178,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let manhwa18cc = Manhwa18cc::default();
 
@@ -203,6 +208,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let manhwa18cc = Manhwa18cc::default();
 

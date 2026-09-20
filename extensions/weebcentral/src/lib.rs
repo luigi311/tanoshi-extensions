@@ -451,6 +451,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let weebcentral = create_test_instance();
 
@@ -468,6 +469,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let weebcentral = create_test_instance();
 
@@ -476,6 +478,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga_past_end_is_empty_not_error() {
         // The site's "No results found" alert past the last page is a
         // legitimate empty result, not a markup-change error.
@@ -486,6 +489,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let weebcentral = create_test_instance();
 
@@ -503,6 +507,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let weebcentral = create_test_instance();
 
@@ -532,6 +537,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let weebcentral = create_test_instance();
 
@@ -561,6 +567,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let weebcentral = create_test_instance();
 

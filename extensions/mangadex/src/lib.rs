@@ -411,6 +411,7 @@ mod test {
     const COMPLETED_CHAPTER_COUNT: usize = 371;
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let mangadex = Mangadex::default();
 
@@ -419,6 +420,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let mangadex = Mangadex::default();
 
@@ -427,6 +429,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let mangadex = Mangadex::default();
 
@@ -437,6 +440,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let mangadex = Mangadex::default();
 
@@ -447,6 +451,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let mangadex = Mangadex::default();
 
@@ -475,6 +480,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let mangadex = Mangadex::default();
 
@@ -487,6 +493,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_large_image() {
         // Test downloading and saving a large image from Mangadex as they support pngs which can be larger than 10mb standard limits.
         // https://cmdxd98sb0x3yprd.mangadex.network/data/ffc278361423df8bab7a0fff52689f0b/24-efcc5b0ee5e24f2c1ac1f15df114dbae078cb3618792308bf55a4cec7d390ae9.png

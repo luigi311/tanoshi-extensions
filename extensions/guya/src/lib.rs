@@ -103,6 +103,7 @@ mod test {
     const COMPLETED_CHAPTER_COUNT: usize = 318;
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let guya = Guya::default();
         let res = guya.get_popular_manga(1).unwrap();
@@ -110,6 +111,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let guya = Guya::default();
         let res = guya.get_latest_manga(1).unwrap();
@@ -117,6 +119,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         let guya = Guya::default();
         let res = guya
@@ -126,6 +129,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let guya = Guya::default();
         let res = guya
@@ -135,6 +139,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         let guya = Guya::default();
         let res = guya.get_chapters(COMPLETED_MANGA_PATH.to_string()).unwrap();
@@ -161,6 +166,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         let guya = Guya::default();
         let res = guya

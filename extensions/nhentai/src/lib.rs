@@ -827,6 +827,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_popular_manga() {
         let nhentai: NHentai = create_test_instance();
 
@@ -835,6 +836,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_latest_manga() {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -845,6 +847,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga() {
         std::thread::sleep(std::time::Duration::from_secs(2));
 
@@ -857,6 +860,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_search_manga_filter() {
         std::thread::sleep(std::time::Duration::from_secs(3));
 
@@ -883,6 +887,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_manga_detail() {
         let nhentai: NHentai = create_test_instance();
 
@@ -893,6 +898,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_chapters() {
         std::thread::sleep(std::time::Duration::from_secs(1));
 
@@ -907,6 +913,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "live source check"]
     fn test_get_pages() {
         std::thread::sleep(std::time::Duration::from_secs(2));
 
