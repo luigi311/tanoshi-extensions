@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::prelude::*;
 use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
@@ -324,23 +324,26 @@ impl Extension for Weebcentral {
         let mut chapters = vec![];
 
         for (index, chapter) in document.select(&chapter_selector).enumerate() {
-            let title = chapter.select(&title_selector).next().map_or_else(
-                || "Unknown Title".to_string(),
-                |el| el.inner_html().trim().to_string(),
-            );
+            let row = index + 1;
+            let title = chapter
+                .select(&title_selector)
+                .next()
+                .map(|el| el.text().collect::<String>().trim().to_string())
+                .filter(|title| !title.is_empty())
+                .with_context(|| {
+                    format!("WeebCentral chapter row {row} from {URL}{path}/full-chapter-list: missing title")
+                })?;
             let fallback_number = chapter_count.saturating_sub(index) as f64;
 
-            let Some(chapter_id) = chapter
+            let chapter_id = chapter
                 .select(&link_selector)
                 .next()
                 .and_then(|el| el.value().attr("href"))
                 .and_then(|href| segment_after(href, "chapters"))
-            else {
-                log::warn!(
-                    "Skipping malformed WeebCentral chapter row from {URL}{path}: missing chapter id"
-                );
-                continue;
-            };
+                .filter(|id| !id.trim().is_empty())
+                .with_context(|| {
+                    format!("WeebCentral chapter row {row} from {URL}{path}/full-chapter-list: missing chapter id")
+                })?;
 
             let upload = chapter
                 .select(&time_selector)
@@ -379,8 +382,17 @@ impl Extension for Weebcentral {
         let panel_selector =
             Selector::parse("section.w-full.pb-4.cursor-pointer > img.mx-auto").unwrap();
 
-        for panel in document.select(&panel_selector) {
-            panels.push(panel.value().attr("src").unwrap_or("").to_string());
+        for (index, panel) in document.select(&panel_selector).enumerate() {
+            let page = index + 1;
+            let src = panel
+                .value()
+                .attr("src")
+                .map(str::trim)
+                .filter(|src| !src.is_empty())
+                .with_context(|| {
+                    format!("WeebCentral page {page} from {URL}{path}/images: missing image src")
+                })?;
+            panels.push(src.to_string());
         }
 
         if panels.is_empty() {
