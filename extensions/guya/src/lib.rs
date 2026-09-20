@@ -1,5 +1,5 @@
 use anyhow::Result;
-use guyalib::{get_chapters, get_manga_detail, get_manga_list, get_pages};
+use guyalib::{MangaOrder, get_chapters, get_manga_detail, get_manga_list, get_pages};
 use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
@@ -53,7 +53,7 @@ impl Extension for Guya {
         if page > 1 {
             return Ok(vec![]);
         }
-        get_manga_list(URL, ID, &self.client)
+        get_manga_list(URL, ID, &self.client, MangaOrder::Title)
     }
 
     fn get_latest_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
@@ -61,7 +61,7 @@ impl Extension for Guya {
         if page > 1 {
             return Ok(vec![]);
         }
-        get_manga_list(URL, ID, &self.client)
+        get_manga_list(URL, ID, &self.client, MangaOrder::Latest)
     }
 
     fn search_manga(
@@ -74,7 +74,7 @@ impl Extension for Guya {
         if page > 1 {
             return Ok(vec![]);
         }
-        let manga = get_manga_list(URL, ID, &self.client)?;
+        let manga = get_manga_list(URL, ID, &self.client, MangaOrder::Title)?;
 
         if let Some(query) = query {
             Ok(manga

@@ -54,18 +54,32 @@ fn selected_pages<'a>(chapter: &'a Chapter, context: &str) -> Result<(&'a str, &
     Ok((group, pages))
 }
 
+pub enum MangaOrder {
+    Title,
+    Latest,
+}
+
 pub fn get_manga_list(
     url: &str,
     source_id: i64,
     client: &RateLimitedAgent,
+    order: MangaOrder,
 ) -> Result<Vec<MangaInfo>> {
     let request_url = format!("{}/api/get_all_series", url);
     let text = client.fetch_text(&request_url)?;
     let results: HashMap<String, Detail> = serde_json::from_str(&text)
         .with_context(|| format!("invalid Guya catalog API response from {request_url}"))?;
 
+    let mut results: Vec<_> = results.into_iter().collect();
+    results.sort_by(|(title_a, detail_a), (title_b, detail_b)| match order {
+        MangaOrder::Title => title_a.cmp(title_b),
+        MangaOrder::Latest => detail_b
+            .last_updated
+            .cmp(&detail_a.last_updated)
+            .then_with(|| title_a.cmp(title_b)),
+    });
     let matched = results.len();
-    let mut manga: Vec<MangaInfo> = results
+    let manga: Vec<MangaInfo> = results
         .into_iter()
         .filter_map(|(title, detail)| {
             if title.trim().is_empty() || detail.slug.trim().is_empty() {
@@ -95,7 +109,6 @@ pub fn get_manga_list(
     if rejected > 0 {
         log::warn!("Guya catalog from {request_url}: rejected {rejected} of {matched} records");
     }
-    manga.sort_by(|a, b| a.title.cmp(&b.title));
     ensure_non_empty(&request_url, manga)
 }
 
