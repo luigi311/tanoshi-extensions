@@ -93,7 +93,7 @@ pub fn get_manga_list(
                 title,
                 author: vec![detail.author, detail.artist],
                 genre: vec![],
-                status: Some("Ongoing".to_string()),
+                status: None,
                 description: Some(detail.description),
                 path: format!("/api/series/{}", detail.slug),
                 cover_url: if detail.cover.trim().is_empty() {
@@ -133,7 +133,7 @@ pub fn get_manga_detail(
         title: series.title.clone(),
         author: vec![series.author.clone(), series.artist.clone()],
         genre: vec![],
-        status: Some("Ongoing".to_string()),
+        status: None,
         description: Some(series.description.clone()),
         path: path.to_string(),
         cover_url: if series.cover.trim().is_empty() {
