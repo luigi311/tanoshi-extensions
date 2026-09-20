@@ -522,11 +522,11 @@ impl NHentai {
         Ok(SearchQuery { text: q, sort })
     }
 
-    fn get_manga_list(&self, url: &str, allow_empty: bool) -> Result<Vec<MangaInfo>> {
+    fn get_manga_list(&self, url: &str) -> Result<Vec<MangaInfo>> {
         let res = self
             .client
             .fetch_text(url)
-            .map_err(|e| anyhow!(e.to_string()))?;
+            .with_context(|| format!("NHentai listing request failed: {url}"))?;
 
         let document = Html::parse_document(&res);
         let gallery_selector =
@@ -537,29 +537,45 @@ impl NHentai {
             Selector::parse("a").map_err(|e| anyhow!("failed to parse selector: {e:?}"))?;
         let title_selector = Selector::parse("a > .caption")
             .map_err(|e| anyhow!("failed to parse selector: {e:?}"))?;
+        let empty_selector = Selector::parse("#content .no-results > h2").unwrap();
 
         let mut manga_list = vec![];
-        for gallery in document.select(&gallery_selector) {
+        let matched = document.select(&gallery_selector).count();
+        for (index, gallery) in document.select(&gallery_selector).enumerate() {
+            let card = index + 1;
+            // Missing artwork does not invalidate a gallery.
             let cover_url = gallery
                 .select(&image_selector)
                 .flat_map(|thumbnail| thumbnail.value().attr("src"))
                 .next()
+                .map(str::trim)
+                .filter(|src| !src.is_empty())
                 .map(normalize_url)
-                .ok_or_else(|| anyhow!("cover_url not found"))?;
+                .unwrap_or_default();
 
-            let path = gallery
+            let Some(path) = gallery
                 .select(&path_selector)
                 .flat_map(|link| link.value().attr("href"))
                 .next()
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow!("path not found"))?;
+                .filter(|path| {
+                    path.trim_matches('/').strip_prefix("g/").is_some_and(|id| {
+                        !id.is_empty() && id.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+                })
+                .map(str::to_string)
+            else {
+                log::warn!("Skipping NHentai manga card {card} from {url}: invalid gallery path");
+                continue;
+            };
 
-            let title = gallery
+            let Some(title) = gallery
                 .select(&title_selector)
-                .flat_map(|caption| caption.text().next())
                 .next()
-                .map(|s| s.to_string())
-                .ok_or_else(|| anyhow!("title not found"))?;
+                .and_then(trimmed_element_text)
+            else {
+                log::warn!("Skipping NHentai manga card {card} from {url}: missing title");
+                continue;
+            };
 
             manga_list.push(MangaInfo {
                 source_id: ID,
@@ -572,14 +588,19 @@ impl NHentai {
                 cover_url,
             });
         }
-        // Past the end of pagination the site serves an explicit
-        // "No results found" page — a legitimate empty, not breakage.
-        if !allow_empty
-            && !res.trim().is_empty()
-            && manga_list.is_empty()
-            && !res.contains("No results found")
-        {
-            return Err(anyhow!("parsed 0 items from {url} — markup change?"));
+        let rejected = matched - manga_list.len();
+        if rejected > 0 {
+            log::warn!("NHentai listing from {url}: rejected {rejected} of {matched} cards");
+        }
+        if manga_list.is_empty() {
+            let recognized_empty = matched == 0
+                && document
+                    .select(&empty_selector)
+                    .any(|el| trimmed_element_text(el).as_deref() == Some("No results found"));
+            anyhow::ensure!(
+                recognized_empty,
+                "NHentai listing from {url}: no valid manga ({matched} matched, {rejected} rejected); unrecognized or malformed response"
+            );
         }
 
         Ok(manga_list)
@@ -605,17 +626,14 @@ impl Extension for NHentai {
         log::debug!("{NAME}: get_popular_manga page={page}");
         let request = self.query_parts(None, None)?;
         let q = encode(&request.text);
-        self.get_manga_list(
-            &format!("{URL}/search/?q={q}&sort=popular&page={page}"),
-            false,
-        )
+        self.get_manga_list(&format!("{URL}/search/?q={q}&sort=popular&page={page}"))
     }
 
     fn get_latest_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: get_latest_manga page={page}");
         let request = self.query_parts(None, None)?;
         let q = encode(&request.text);
-        self.get_manga_list(&format!("{URL}/search/?q={q}&page={page}"), false)
+        self.get_manga_list(&format!("{URL}/search/?q={q}&page={page}"))
     }
 
     fn search_manga(
@@ -626,7 +644,7 @@ impl Extension for NHentai {
     ) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: search_manga page={page} query={query:?}");
         let url = self.search_url(page, query, filters)?;
-        self.get_manga_list(&url, true)
+        self.get_manga_list(&url)
     }
 
     fn get_manga_detail(&self, path: String) -> Result<MangaInfo> {
@@ -709,14 +727,16 @@ impl Extension for NHentai {
             .select(&thumbnail_selector)
             .flat_map(|el| el.value().attr("src"))
             .next()
+            .map(str::trim)
+            .filter(|src| !src.is_empty())
             .map(normalize_url)
-            .ok_or_else(|| anyhow!("cover not found"))?;
+            .unwrap_or_default();
 
         let title = document
             .select(&title_selector)
             .filter_map(trimmed_element_text)
             .next()
-            .ok_or_else(|| anyhow!("title not found"))?;
+            .with_context(|| format!("NHentai gallery {URL}{path}: missing title"))?;
 
         let author: Vec<String> = document
             .select(&author_selector)
