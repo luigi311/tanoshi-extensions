@@ -137,13 +137,14 @@ fn parse_api_response<T: DeserializeOwned>(body: &str, resource: &str) -> Result
         .select(&pre_selector)
         .next()
         .map(|element| element.text().collect::<String>())
-        .filter(|text| !text.trim().is_empty())
-        .ok_or_else(|| {
-            anyhow!("failed to parse NHentai {resource} API response: {direct_error}")
-        })?;
+        .filter(|text| !text.trim().is_empty());
+    let Some(wrapped_body) = wrapped_body else {
+        return Err(direct_error)
+            .with_context(|| format!("failed to parse NHentai {resource} API response"));
+    };
 
     serde_json::from_str(&wrapped_body)
-        .map_err(|error| anyhow!("failed to parse NHentai {resource} API response: {error}"))
+        .with_context(|| format!("failed to parse wrapped NHentai {resource} API response"))
 }
 
 impl CdnConfigCache {
@@ -391,8 +392,9 @@ impl NHentai {
         let cdn_res = self
             .client
             .fetch_text(&cdn_url)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        let cdn: CdnConfigResponse = parse_api_response(&cdn_res, "CDN")?;
+            .with_context(|| format!("NHentai CDN request failed: {cdn_url}"))?;
+        let cdn: CdnConfigResponse = parse_api_response(&cdn_res, "CDN")
+            .with_context(|| format!("NHentai CDN response from {cdn_url}"))?;
         if cdn.image_servers.is_empty() {
             return Err(anyhow!("NHentai CDN API returned no image servers"));
         }
@@ -807,8 +809,9 @@ impl Extension for NHentai {
         let gallery_res = self
             .client
             .fetch_text(&api_url)
-            .map_err(|e| anyhow!(e.to_string()))?;
-        let gallery: GalleryApiResponse = parse_api_response(&gallery_res, "gallery")?;
+            .with_context(|| format!("NHentai gallery API request failed: {api_url}"))?;
+        let gallery: GalleryApiResponse = parse_api_response(&gallery_res, "gallery")
+            .with_context(|| format!("NHentai gallery API response from {api_url}"))?;
 
         let image_servers = self.fetch_cdn_servers()?;
         let image_server = image_servers
