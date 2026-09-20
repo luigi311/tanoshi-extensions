@@ -534,13 +534,14 @@ pub struct FlareClient {
 fn cf_challenge_marker(status: u16, body: &str) -> Option<&'static str> {
     let lower = body.to_ascii_lowercase();
 
-    // Cloudflare challenge pages contain characteristic markers.
+    // Cloudflare challenge pages contain characteristic markers. The generic
+    // challenge-platform script also runs passive detection on normal pages,
+    // so its presence alone must not mark a response as an unsolved challenge.
     // We require at least one challenge-specific marker AND the word "cloudflare"
     // in the body, even for 403/503 status codes. A bare 403 without CF markers
     // is just a normal "forbidden" (auth, geo-block, etc.) — re-solving won't help.
     let has_cf_markers = (lower.contains("cf-browser-verification")
         || lower.contains("cf_chl_opt")
-        || lower.contains("challenge-platform")
         || lower.contains("just a moment"))
         && lower.contains("cloudflare");
 
@@ -550,9 +551,6 @@ fn cf_challenge_marker(status: u16, body: &str) -> Option<&'static str> {
         }
         if lower.contains("cf_chl_opt") {
             return Some("cf_chl_opt");
-        }
-        if lower.contains("challenge-platform") {
-            return Some("challenge-platform");
         }
         return Some("just a moment");
     }
@@ -1565,10 +1563,10 @@ mod test {
     }
 
     #[test]
-    fn test_cf_challenge_detection_200_challenge_platform() {
+    fn test_cf_challenge_detection_200_passive_script_not_flagged() {
         let body = r#"<html><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>
             cloudflare</html>"#;
-        assert!(looks_like_cf_challenge(200, body));
+        assert!(!looks_like_cf_challenge(200, body));
     }
 
     #[test]
