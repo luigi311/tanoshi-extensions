@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use chrono::{Duration, NaiveDateTime, Utc};
 use networking::{FlareClient, RateLimitedAgent};
 use scraper::{ElementRef, Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, MangaInfo};
@@ -332,7 +332,7 @@ pub fn get_manga_detail<C: DetailClient>(
     })
 }
 
-fn parse_chapter_time(s: &str) -> Option<NaiveDateTime> {
+fn parse_chapter_time(s: &str, now: NaiveDateTime) -> Option<NaiveDateTime> {
     let s = s.trim();
     if s.is_empty() {
         return None;
@@ -357,18 +357,17 @@ fn parse_chapter_time(s: &str) -> Option<NaiveDateTime> {
             other => other.parse().ok()?,
         };
         let unit = parts[1].trim_end_matches('s'); // strip plural
-        let now = Utc::now().naive_utc();
-        let dt = match unit {
-            "second" => now - Duration::seconds(n),
-            "minute" | "min" => now - Duration::minutes(n),
-            "hour" | "hr" => now - Duration::hours(n),
-            "day" => now - Duration::days(n),
-            "week" => now - Duration::weeks(n),
-            "month" => now - Duration::days(n * 30),
-            "year" => now - Duration::days(n * 365),
+        let duration = match unit {
+            "second" => Duration::try_seconds(n),
+            "minute" | "min" => Duration::try_minutes(n),
+            "hour" | "hr" => Duration::try_hours(n),
+            "day" => Duration::try_days(n),
+            "week" => Duration::try_weeks(n),
+            "month" => Duration::try_days(n.checked_mul(30)?),
+            "year" => Duration::try_days(n.checked_mul(365)?),
             _ => return None,
-        };
-        return Some(dt);
+        }?;
+        return now.checked_sub_signed(duration);
     }
 
     None
@@ -385,6 +384,7 @@ fn parse_chapters(
 ) -> Result<Vec<ChapterInfo>> {
     let selector_chapter_title = Selector::parse("a[title]")
         .map_err(|e| anyhow!("failed to parse chapter title selector: {:?}", e))?;
+    let now = Utc::now().naive_utc();
 
     let chapters: Vec<ChapterInfo> = doc
         .select(selector)
@@ -423,10 +423,10 @@ fn parse_chapters(
                 })
                 .unwrap_or_default();
 
-            let uploaded = parse_chapter_time(&raw_time)
-                .unwrap_or_else(|| DateTime::<Utc>::from_timestamp(0, 0).unwrap().naive_utc())
-                .and_utc()
-                .timestamp();
+            // Missing, unrecognized and out-of-range dates use the host's unknown sentinel.
+            let uploaded = parse_chapter_time(&raw_time, now)
+                .map(|date| date.and_utc().timestamp())
+                .unwrap_or(0);
 
             let chapter_url = el
                 .select(selector_chapter_url)
