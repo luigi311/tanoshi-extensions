@@ -214,16 +214,21 @@ impl Default for NHentai {
     }
 }
 
-fn nh_field_key(ui_label: &str) -> &'static str {
+fn nh_field_key(ui_label: &str) -> Option<&'static str> {
     match ui_label {
-        "Tag" => "tag",
-        "Characters" => "character",
-        "Artists" => "artist",
-        "Groups" => "group",
-        "Categories" => "category",
-        "Parodies" => "parody",
-        _ => "tag",
+        "Tag" => Some("tag"),
+        "Characters" => Some("character"),
+        "Artists" => Some("artist"),
+        "Groups" => Some("group"),
+        "Categories" => Some("category"),
+        "Parodies" => Some("parody"),
+        _ => None,
     }
+}
+
+struct SearchQuery {
+    text: String,
+    sort: Option<String>,
 }
 
 fn norm_value(v: &str) -> String {
@@ -289,6 +294,30 @@ fn build_gallery_page_urls(
 }
 
 impl NHentai {
+    fn search_url(
+        &self,
+        page: i64,
+        query: Option<String>,
+        filters: Option<Vec<Input>>,
+    ) -> Result<String> {
+        let query = query.filter(|text| !text.trim().is_empty());
+        let filters = filters.filter(|filters| !filters.is_empty());
+        if query.is_none() && filters.is_none() {
+            return Err(anyhow!("query and filters cannot be both empty"));
+        }
+        let text_only = filters.is_none();
+        let mut request = self.query_parts(query.as_deref(), filters)?;
+        // Preserve the text-only popularity sort and any explicit filter sort.
+        if text_only {
+            request.sort = Some("popular".to_string());
+        }
+        let q = encode(&request.text);
+        Ok(match request.sort {
+            Some(sort) => format!("{URL}/search/?q={q}&sort={sort}&page={page}"),
+            None => format!("{URL}/search/?q={q}&page={page}"),
+        })
+    }
+
     fn fetch_gallery(&self, path: &str) -> Result<String> {
         let url = format!("{}{}", URL, path);
         {
@@ -344,8 +373,12 @@ impl NHentai {
         Ok(cdn.image_servers)
     }
 
-    fn query_parts(&self, filters: Option<Vec<Input>>) -> (String, Option<String>) {
-        let mut query: Vec<String> = vec![];
+    fn query_parts(&self, text: Option<&str>, filters: Option<Vec<Input>>) -> Result<SearchQuery> {
+        let mut query: Vec<String> = text
+            .filter(|text| !text.trim().is_empty())
+            .map(str::to_string)
+            .into_iter()
+            .collect();
         let mut sort: Option<String> = None;
 
         // preferences: language + global blacklist
@@ -373,13 +406,24 @@ impl NHentai {
         // filters
         if let Some(filters) = filters {
             for filter in filters {
+                let Some(canonical) = FILTER_LIST
+                    .iter()
+                    .find(|known| known.name() == filter.name())
+                else {
+                    continue;
+                };
+                if !canonical.eq(&filter) {
+                    return Err(anyhow!("invalid {}: unexpected input type", filter.name()));
+                }
                 match filter {
                     Input::Text {
                         name,
                         state: Some(state),
                         ..
                     } if name == TAG_FILTER.name() => {
-                        let key = nh_field_key(&name);
+                        let Some(key) = nh_field_key(&name) else {
+                            continue;
+                        };
                         for raw in state.split(',') {
                             let raw = raw.trim();
                             if raw.is_empty() {
@@ -387,6 +431,9 @@ impl NHentai {
                             }
                             let neg = raw.starts_with('-');
                             let term = norm_value(raw.trim_start_matches('-'));
+                            if term.is_empty() {
+                                continue;
+                            }
                             if neg {
                                 query.push(format!("-{key}:{term}"));
                             } else {
@@ -399,7 +446,9 @@ impl NHentai {
                         state: Some(state),
                         ..
                     } => {
-                        let key = nh_field_key(&name);
+                        let Some(key) = nh_field_key(&name) else {
+                            continue;
+                        };
                         let term = norm_value(&state);
                         if !term.is_empty() {
                             query.push(format!("{key}:{term}"));
@@ -411,10 +460,22 @@ impl NHentai {
                         state,
                         ..
                     } if name == SORT_FILTER.name() => {
-                        let idx = state.unwrap_or(0) as usize;
-                        if let Some(InputType::String(v)) = values.get(idx) {
-                            sort = Some(v.replace(' ', "-").to_lowercase()); // e.g., popular-week
+                        let index = state.unwrap_or(0);
+                        let selected = usize::try_from(index)
+                            .ok()
+                            .and_then(|index| values.get(index));
+                        let Some(InputType::String(value)) = selected else {
+                            return Err(anyhow!(
+                                "invalid Sort: selection index {index} is not a string choice"
+                            ));
+                        };
+                        if !matches!(
+                            value.as_str(),
+                            "Popular" | "Popular Week" | "Popular Today" | "Recent"
+                        ) {
+                            return Err(anyhow!("invalid Sort: unknown choice"));
                         }
+                        sort = Some(value.replace(' ', "-").to_lowercase());
                     }
                     _ => {}
                 }
@@ -426,7 +487,7 @@ impl NHentai {
         } else {
             query.join(" ")
         };
-        (q, sort)
+        Ok(SearchQuery { text: q, sort })
     }
 
     fn get_manga_list(&self, url: &str, allow_empty: bool) -> Result<Vec<MangaInfo>> {
@@ -510,8 +571,8 @@ impl Extension for NHentai {
 
     fn get_popular_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: get_popular_manga page={page}");
-        let (q, _) = self.query_parts(None);
-        let q = encode(&q);
+        let request = self.query_parts(None, None)?;
+        let q = encode(&request.text);
         self.get_manga_list(
             &format!("{URL}/search/?q={q}&sort=popular&page={page}"),
             false,
@@ -520,8 +581,8 @@ impl Extension for NHentai {
 
     fn get_latest_manga(&self, page: i64) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: get_latest_manga page={page}");
-        let (q, _) = self.query_parts(None);
-        let q = encode(&q);
+        let request = self.query_parts(None, None)?;
+        let q = encode(&request.text);
         self.get_manga_list(&format!("{URL}/search/?q={q}&page={page}"), false)
     }
 
@@ -532,19 +593,7 @@ impl Extension for NHentai {
         filters: Option<Vec<Input>>,
     ) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: search_manga page={page} query={query:?}");
-        let url = if let Some(filters) = filters {
-            let (q_raw, sort) = self.query_parts(Some(filters));
-            let q = encode(&q_raw);
-            match sort {
-                Some(s) => format!("{URL}/search/?q={q}&sort={s}&page={page}"),
-                None => format!("{URL}/search/?q={q}&page={page}"),
-            }
-        } else if let Some(query) = query {
-            let q = encode(&query);
-            format!("{URL}/search/?q={q}&sort=popular&page={page}")
-        } else {
-            return Err(anyhow!("query and filters cannot be both empty"));
-        };
+        let url = self.search_url(page, query, filters)?;
         self.get_manga_list(&url, true)
     }
 
@@ -751,6 +800,82 @@ mod test {
         nhentai.set_preferences(preferences).unwrap();
 
         nhentai
+    }
+
+    #[test]
+    fn search_combines_text_filters_and_preferences() {
+        let source = create_test_instance();
+        let text = "A&B + 日本語";
+        let text_filter = |name: &str, state: &str| Input::Text {
+            name: name.into(),
+            state: Some(state.into()),
+        };
+        let query_value = |url: &str| {
+            let value = url
+                .split('?')
+                .nth(1)
+                .unwrap()
+                .split('&')
+                .find_map(|part| part.strip_prefix("q="))
+                .unwrap();
+            urlencoding::decode(value).unwrap().into_owned()
+        };
+        let plain = source.search_url(1, Some(text.into()), None).unwrap();
+        assert!(query_value(&plain).contains(text));
+        assert!(query_value(&plain).contains("language:english"));
+        assert!(query_value(&plain).contains("-tag:posession"));
+        assert!(plain.contains("sort=popular&"));
+        assert_eq!(
+            plain,
+            source
+                .search_url(1, Some(text.into()), Some(vec![]))
+                .unwrap()
+        );
+        let filters = vec![
+            text_filter("Tag", "romance, -big breasts, , -"),
+            text_filter("Future Field", "ignored"),
+            Input::Select {
+                name: "Sort".into(),
+                values: vec![InputType::String("Popular Week".into())],
+                state: Some(0),
+            },
+        ];
+        for query in [None, Some(" ".into()), Some(text.into())] {
+            let combined = source
+                .search_url(2, query.clone(), Some(filters.clone()))
+                .unwrap();
+            let decoded = query_value(&combined);
+            assert_eq!(decoded.contains(text), query.as_deref() == Some(text));
+            for term in [
+                "language:english",
+                "-tag:posession",
+                "tag:romance",
+                "-tag:big_breasts",
+            ] {
+                assert!(decoded.contains(term), "missing {term}: {decoded}");
+            }
+            assert!(!decoded.contains("ignored"));
+            assert!(!decoded.split_whitespace().any(|term| term == "-tag:"));
+            assert!(combined.ends_with("sort=popular-week&page=2"));
+        }
+        for state in [-1, 4] {
+            let filters = vec![Input::Select {
+                name: "Sort".into(),
+                values: vec![InputType::String("Popular".into())],
+                state: Some(state),
+            }];
+            assert!(
+                source
+                    .search_url(1, Some(text.into()), Some(filters))
+                    .unwrap_err()
+                    .to_string()
+                    .contains("Sort")
+            );
+        }
+        for filters in [None, Some(vec![])] {
+            assert!(source.search_url(1, None, filters.clone()).is_err());
+            assert!(source.search_url(1, Some(" ".into()), filters).is_err());
+        }
     }
 
     #[test]
