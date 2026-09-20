@@ -899,7 +899,10 @@ mod test {
         let nhentai: NHentai = create_test_instance();
 
         let res = nhentai.get_chapters("/g/385965".to_string()).unwrap();
-        assert!(!res.is_empty());
+        // A gallery is a complete work exposed as exactly one synthetic chapter.
+        assert_eq!(res.len(), 1, "a gallery must contain exactly one chapter");
+        assert_eq!(res[0].path, "/g/385965");
+        assert_eq!(res[0].number, 1.0);
         assert!(res.iter().all(|chapter| chapter.uploaded > 0));
     }
 

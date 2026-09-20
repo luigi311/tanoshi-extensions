@@ -123,6 +123,11 @@ impl Extension for Manhwa18cc {
 mod test {
     use super::*;
 
+    // Ooh La La is listed in https://manhwa18.cc/completed; 61 main chapters
+    // plus split chapters make 70 hosted entries, last updated January 2024.
+    const COMPLETED_MANGA_PATH: &str = "/webtoon/ooh-la-la";
+    const COMPLETED_CHAPTER_COUNT: usize = 70;
+
     #[test]
     fn test_get_latest_manga() {
         let manhwa18cc = Manhwa18cc::default();
@@ -173,10 +178,28 @@ mod test {
         let manhwa18cc = Manhwa18cc::default();
 
         let res = manhwa18cc
-            .get_chapters("/webtoon/private-tutoring-in-these-trying-times".to_string())
+            .get_chapters(COMPLETED_MANGA_PATH.to_string())
             .unwrap();
-        assert!(!res.is_empty());
-        println!("{res:?}");
+        assert_eq!(
+            res.len(),
+            COMPLETED_CHAPTER_COUNT,
+            "Ooh La La chapter count changed"
+        );
+        let prefix = format!("{COMPLETED_MANGA_PATH}/chapter-");
+        assert!(
+            res.iter().all(|chapter| chapter
+                .path
+                .strip_prefix(&prefix)
+                .is_some_and(|id| !id.is_empty())),
+            "chapter paths must include a chapter number"
+        );
+        let unique_paths: std::collections::HashSet<_> =
+            res.iter().map(|chapter| &chapter.path).collect();
+        assert_eq!(
+            unique_paths.len(),
+            res.len(),
+            "chapter paths must be unique"
+        );
     }
 
     #[test]

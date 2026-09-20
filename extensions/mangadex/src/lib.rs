@@ -404,6 +404,12 @@ impl Extension for Mangadex {
 mod test {
     use super::*;
 
+    // Completed Kaguya-sama, verified against the English feed. Count releases,
+    // including extras and multiple scanlation groups, rather than chapter numbers.
+    // https://api.mangadex.org/manga/37f5cce0-8070-4ada-96e5-fa24b1bd4ff9
+    const COMPLETED_MANGA_PATH: &str = "/manga/37f5cce0-8070-4ada-96e5-fa24b1bd4ff9";
+    const COMPLETED_CHAPTER_COUNT: usize = 371;
+
     #[test]
     fn test_get_latest_manga() {
         let mangadex = Mangadex::default();
@@ -445,9 +451,27 @@ mod test {
         let mangadex = Mangadex::default();
 
         let res = mangadex
-            .get_chapters("/manga/a96676e5-8ae2-425e-b549-7f15dd34a6d8".to_string())
+            .get_chapters(COMPLETED_MANGA_PATH.to_string())
             .unwrap();
-        assert!(!res.is_empty());
+        assert_eq!(
+            res.len(),
+            COMPLETED_CHAPTER_COUNT,
+            "Kaguya-sama English release count changed"
+        );
+        assert!(
+            res.iter().all(|chapter| chapter
+                .path
+                .strip_prefix("/chapter/")
+                .is_some_and(|id| !id.is_empty())),
+            "chapter paths must include a chapter ID"
+        );
+        let unique_paths: std::collections::HashSet<_> =
+            res.iter().map(|chapter| &chapter.path).collect();
+        assert_eq!(
+            unique_paths.len(),
+            res.len(),
+            "chapter paths must be unique"
+        );
     }
 
     #[test]
