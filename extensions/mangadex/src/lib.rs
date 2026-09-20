@@ -3,7 +3,7 @@ mod filter;
 
 use crate::dto::{
     Relationship, Results,
-    manga::{ListOrder, Order, Rating, request},
+    manga::{ListOrder, Order, request},
 };
 use anyhow::{Result, anyhow, bail};
 use dto::ResultsAtHome;
@@ -294,22 +294,7 @@ impl Extension for Mangadex {
         filters: Option<Vec<Input>>,
     ) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: search_manga page={page} query={query:?}");
-        let query_list = if let Some(filters) = filters {
-            filters.into()
-        } else if let Some(query) = query {
-            request::MangaList {
-                title: Some(query),
-                content_rating: vec![
-                    Rating::Safe,
-                    Rating::Suggestive,
-                    Rating::Erotica,
-                    Rating::Pornographic,
-                ],
-                ..Default::default()
-            }
-        } else {
-            bail!("query and filters cannot be both empty")
-        };
+        let query_list = request::MangaList::search(query, filters)?;
 
         self.get_manga_list(page, query_list)
     }
