@@ -382,8 +382,10 @@ impl Extension for Mangadex {
         let mut saw_data = false;
 
         loop {
+            // External chapters need a separate provider extension. Setting an include
+            // filter disables MangaDex's implicit published-only filter, so retain it explicitly.
             let url = format!(
-                "{}{}/feed?limit={CHAPTER_PAGE_LIMIT}&offset={offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&translatedLanguage[]=en&includes[]=scanlation_group",
+                "{}{}/feed?limit={CHAPTER_PAGE_LIMIT}&offset={offset}&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica&contentRating[]=pornographic&translatedLanguage[]=en&includes[]=scanlation_group&includeExternalUrl=0&includeFuturePublishAt=0",
                 URL, path
             );
 
