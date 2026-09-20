@@ -12,3 +12,4 @@ log = { workspace = true }
 networking = { workspace = true }
 scraper = { workspace = true }
 tanoshi-lib = { workspace = true }
+urlencoding = { workspace = true }
