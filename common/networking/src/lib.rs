@@ -675,7 +675,7 @@ impl FlareClient {
         }
     }
 
-    /// Re-solve via FlareSolverr and update the internal agent + headers.
+    /// Re-solve via FlareSolverr and update the internal browser user agent and cookies.
     /// Returns Ok(true) if re-solve succeeded, Ok(false) if no FS configured.
     fn re_solve(&self) -> Result<bool> {
         let (fs_url, origin_url) = {
@@ -720,7 +720,6 @@ impl FlareClient {
         {
             let mut guard = self.lock_inner();
             guard.agent = new_agent;
-            guard.default_headers = solved.headers;
         }
 
         debug!("FlareClient: re-solve succeeded, agent updated");
@@ -1284,7 +1283,6 @@ fn proxy_post_empty(fs_url: &str, session_id: Option<&str>, url: &str) -> Result
 struct Solved {
     user_agent: String,
     cookies: Vec<FlareSolverrCookie>,
-    headers: Vec<(String, String)>,
 }
 
 fn solve_with_flaresolverr(
@@ -1299,23 +1297,10 @@ fn solve_with_flaresolverr(
 
     let solution = request_flaresolverr(flaresolverr_url, &payload)?;
 
-    let mut hdrs: Vec<(String, String)> = vec![];
-    if let Some(obj) = solution.headers.as_object() {
-        for (k, v) in obj {
-            if let Some(s) = v.as_str() {
-                if !k.eq_ignore_ascii_case("set-cookie") {
-                    hdrs.push((k.to_string(), s.to_string()));
-                }
-            } else {
-                hdrs.push((k.to_string(), v.to_string()));
-            }
-        }
-    }
-
+    // Solution headers describe the browser response, not future requests.
     Ok(Solved {
-        user_agent: solution.userAgent.clone(),
+        user_agent: solution.userAgent,
         cookies: solution.cookies,
-        headers: hdrs,
     })
 }
 
@@ -1741,7 +1726,9 @@ mod test {
                 "status": "ok", "message": "", "startTimestamp": 0,
                 "endTimestamp": 0, "version": "3.5.2",
                 "solution": {"url": "https://example.test/final", "status": status,
-                    "cookies": [], "userAgent": "TestUA", "headers": {}, "response": body}
+                    "cookies": [], "userAgent": "TestUA",
+                    "headers": {"Content-Type": "text/html", "Content-Length": "9000", "X-Response-Only": "do-not-replay"},
+                    "response": body}
             })
         };
         let cases = [
@@ -1771,7 +1758,7 @@ mod test {
             (500, solution(200, "content"), Some("HTTP 500")),
         ];
         for (http_status, envelope, expected_error) in cases {
-            for method in ["GET", "POST form", "POST empty"] {
+            for method in ["GET", "POST form", "POST empty", "re-solve"] {
                 let listener = TcpListener::bind("127.0.0.1:0").unwrap();
                 listener.set_nonblocking(true).unwrap();
                 let endpoint = format!("http://{}", listener.local_addr().unwrap());
@@ -1827,14 +1814,33 @@ mod test {
                         "https://example.test",
                         &[("q", "a&b")],
                     ),
-                    _ => proxy_post_empty(&endpoint, Some("test-session"), "https://example.test"),
+                    "POST empty" => {
+                        proxy_post_empty(&endpoint, Some("test-session"), "https://example.test")
+                    }
+                    _ => {
+                        let client = FlareClient::plain();
+                        {
+                            let mut inner = client.lock_inner();
+                            inner.flaresolverr_url = Some(endpoint.clone());
+                            inner.origin_url = "https://example.test".to_string();
+                            inner.session_id = Some("test-session".to_string());
+                        }
+                        client.re_solve().and_then(|solved| {
+                            if !solved || !client.lock_inner().default_headers.is_empty() {
+                                return Err(anyhow!(
+                                    "response headers must not become request defaults"
+                                ));
+                            }
+                            Ok("content".to_string())
+                        })
+                    }
                 };
                 let payload = worker.join().unwrap();
                 assert_eq!(payload["session"], "test-session");
                 assert_eq!(payload["url"], "https://example.test");
                 assert_eq!(
                     payload["cmd"],
-                    if method == "GET" {
+                    if method == "GET" || method == "re-solve" {
                         "request.get"
                     } else {
                         "request.post"
