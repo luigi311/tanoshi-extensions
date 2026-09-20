@@ -207,9 +207,10 @@ mod test {
         let manhwa18cc = Manhwa18cc::default();
 
         let res = manhwa18cc
-            .get_pages("//webtoon/private-tutoring-in-these-trying-times/chapter-27".to_string())
+            .get_pages(format!("{COMPLETED_MANGA_PATH}/chapter-1"))
             .unwrap();
 
         assert!(!res.is_empty());
+        extension_utils::assert_valid_page_image(&manhwa18cc, &res[0]);
     }
 }

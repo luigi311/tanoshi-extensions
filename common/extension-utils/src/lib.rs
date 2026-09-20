@@ -9,6 +9,22 @@ pub use bytes;
 #[doc(hidden)]
 pub use tanoshi_lib;
 
+/// Fetch a page through the extension and fully decode it as an image.
+/// Enable `test-support` only through dev-dependencies so the decoder stays
+/// out of released extensions. Sample a page instead of downloading a chapter.
+#[cfg(feature = "test-support")]
+pub fn assert_valid_page_image(extension: &impl Extension, url: &str) {
+    let bytes = extension
+        .get_image_bytes(url.to_string())
+        .unwrap_or_else(|error| panic!("failed to download page image {url}: {error:#}"));
+    let image = image::load_from_memory(&bytes)
+        .unwrap_or_else(|error| panic!("page {url} did not decode as an image: {error}"));
+    assert!(
+        image.width() > 0 && image.height() > 0,
+        "page {url} has empty image dimensions"
+    );
+}
+
 /// Merge preference updates into an extension's declared preferences.
 ///
 /// Matching deliberately uses [`Input::eq`]. In `tanoshi-lib` 0.38.0,

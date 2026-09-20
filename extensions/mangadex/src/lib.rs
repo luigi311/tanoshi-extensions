@@ -483,6 +483,7 @@ mod test {
             .unwrap();
 
         assert!(!res.is_empty());
+        extension_utils::assert_valid_page_image(&mangadex, &res[0]);
     }
 
     #[test]

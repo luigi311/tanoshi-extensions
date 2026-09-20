@@ -917,11 +917,13 @@ mod test {
         assert!(!res.is_empty());
         assert!(res[0].starts_with("https://i"));
         assert!(res[0].ends_with("/galleries/2099700/1.jpg"));
+        extension_utils::assert_valid_page_image(&nhentai, &res[0]);
 
         let page = "/g/624576".to_string();
         let res = nhentai.get_pages(page).unwrap();
         assert!(!res.is_empty());
         assert!(res[1].starts_with("https://i"));
         assert!(res[1].ends_with("/galleries/3748415/2.webp"));
+        extension_utils::assert_valid_page_image(&nhentai, &res[1]);
     }
 }

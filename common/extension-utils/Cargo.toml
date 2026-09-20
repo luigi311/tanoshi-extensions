@@ -3,9 +3,13 @@ name = "extension-utils"
 version = "0.0.0"
 edition.workspace = true
 
+[features]
+test-support = ["dep:image"]
+
 [dependencies]
 anyhow = { workspace = true }
 bytes = { workspace = true }
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"], optional = true }
 log = { workspace = true }
 networking = { workspace = true }
 tanoshi-lib = { workspace = true }

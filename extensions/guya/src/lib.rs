@@ -167,5 +167,6 @@ mod test {
             .get_pages("/api/series/Kaguya-Wants-To-Be-Confessed-To/1".to_string())
             .unwrap();
         assert!(!res.is_empty());
+        extension_utils::assert_valid_page_image(&guya, &res[0]);
     }
 }
