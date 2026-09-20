@@ -16,3 +16,6 @@ networking = { workspace = true }
 scraper = { workspace = true }
 tanoshi-lib = { workspace = true }
 urlencoding = { workspace = true }
+
+[dev-dependencies]
+extension-utils = { workspace = true, features = ["test-support"] }

@@ -97,6 +97,11 @@ impl Extension for Guya {
 mod test {
     use super::*;
 
+    // Completed Kaguya-sama: 281 main chapters plus extras, 318 hosted entries.
+    // https://guya.cubari.moe/api/series/Kaguya-Wants-To-Be-Confessed-To/
+    const COMPLETED_MANGA_PATH: &str = "/api/series/Kaguya-Wants-To-Be-Confessed-To";
+    const COMPLETED_CHAPTER_COUNT: usize = 318;
+
     #[test]
     fn test_get_popular_manga() {
         let guya = Guya::default();
@@ -132,10 +137,27 @@ mod test {
     #[test]
     fn test_get_chapters() {
         let guya = Guya::default();
-        let res = guya
-            .get_chapters("/api/series/Kaguya-Wants-To-Be-Confessed-To".to_string())
-            .unwrap();
-        assert!(!res.is_empty());
+        let res = guya.get_chapters(COMPLETED_MANGA_PATH.to_string()).unwrap();
+        assert_eq!(
+            res.len(),
+            COMPLETED_CHAPTER_COUNT,
+            "Kaguya-sama chapter count changed"
+        );
+        let prefix = format!("{COMPLETED_MANGA_PATH}/");
+        assert!(
+            res.iter().all(|chapter| chapter
+                .path
+                .strip_prefix(&prefix)
+                .is_some_and(|id| !id.is_empty())),
+            "chapter paths must include a chapter number"
+        );
+        let unique_paths: std::collections::HashSet<_> =
+            res.iter().map(|chapter| &chapter.path).collect();
+        assert_eq!(
+            unique_paths.len(),
+            res.len(),
+            "chapter paths must be unique"
+        );
     }
 
     #[test]
@@ -145,5 +167,6 @@ mod test {
             .get_pages("/api/series/Kaguya-Wants-To-Be-Confessed-To/1".to_string())
             .unwrap();
         assert!(!res.is_empty());
+        extension_utils::assert_valid_page_image(&guya, &res[0]);
     }
 }

@@ -574,5 +574,6 @@ mod test {
             "pages should be absolute image urls, got {:?}",
             res.first()
         );
+        extension_utils::assert_valid_page_image(&weebcentral, &res[0]);
     }
 }

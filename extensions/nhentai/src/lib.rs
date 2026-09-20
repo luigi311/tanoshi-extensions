@@ -899,7 +899,10 @@ mod test {
         let nhentai: NHentai = create_test_instance();
 
         let res = nhentai.get_chapters("/g/385965".to_string()).unwrap();
-        assert!(!res.is_empty());
+        // A gallery is a complete work exposed as exactly one synthetic chapter.
+        assert_eq!(res.len(), 1, "a gallery must contain exactly one chapter");
+        assert_eq!(res[0].path, "/g/385965");
+        assert_eq!(res[0].number, 1.0);
         assert!(res.iter().all(|chapter| chapter.uploaded > 0));
     }
 
@@ -914,11 +917,13 @@ mod test {
         assert!(!res.is_empty());
         assert!(res[0].starts_with("https://i"));
         assert!(res[0].ends_with("/galleries/2099700/1.jpg"));
+        extension_utils::assert_valid_page_image(&nhentai, &res[0]);
 
         let page = "/g/624576".to_string();
         let res = nhentai.get_pages(page).unwrap();
         assert!(!res.is_empty());
         assert!(res[1].starts_with("https://i"));
         assert!(res[1].ends_with("/galleries/3748415/2.webp"));
+        extension_utils::assert_valid_page_image(&nhentai, &res[1]);
     }
 }
