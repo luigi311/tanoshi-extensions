@@ -22,8 +22,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0
 
-      # Live-site failures must fail the workflow so scheduled runs notify us.
       - name: Cargo test
+        run: cargo test --workspace --locked
+
+      # Live-site failures must fail the workflow so scheduled runs notify us.
+      - name: Cargo test live
         run: |
           docker run -d \
             --name=flaresolverr \
@@ -36,8 +39,7 @@ jobs:
           # Sleep 5 seconds to wait for FlareSolverr to start
           sleep 5
 
-          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test -- --test-threads=1
-          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test -- --test-threads=1 --ignored
+          FLARESOLVERR_URL="http://localhost:8191/v1" cargo test --workspace --locked -- --test-threads=1 --ignored
 
           # Stop FlareSolverr
           docker stop flaresolverr
