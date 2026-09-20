@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use networking::{FlareClient, RateLimitedAgent};
 use scraper::{ElementRef, Html, Selector};
@@ -37,17 +37,6 @@ pub fn parse_manga_list(
     selector: &Selector,
     is_selector_url: bool,
 ) -> Result<Vec<MangaInfo>> {
-    parse_manga_list_inner(url, source_id, body, selector, is_selector_url, false)
-}
-
-fn parse_manga_list_inner(
-    url: &str,
-    source_id: i64,
-    body: &str,
-    selector: &Selector,
-    is_selector_url: bool,
-    allow_empty: bool,
-) -> Result<Vec<MangaInfo>> {
     let doc = Html::parse_document(body);
 
     let selector_name = Selector::parse(if is_selector_url {
@@ -63,6 +52,7 @@ fn parse_manga_list_inner(
     let selector_img =
         Selector::parse("img").map_err(|e| anyhow!("failed to parse selector: {:?}", e))?;
 
+    let matched = doc.select(selector).count();
     let manga: Vec<MangaInfo> = doc
         .select(selector)
         .filter_map(|el| {
@@ -96,20 +86,17 @@ fn parse_manga_list_inner(
                 };
                 href.replace(url, "")
             };
-            if path.is_empty() {
+            if path.trim().trim_matches('/').is_empty() {
                 log::warn!("Skipping malformed Madara manga card from {url}: missing URL");
                 return None;
             }
 
-            let Some(cover_url) = el
+            let cover_url = el
                 .select(&selector_img)
                 .next()
                 .and_then(|image| get_data_src(&image))
                 .filter(|cover_url| !cover_url.trim().is_empty())
-            else {
-                log::warn!("Skipping malformed Madara manga card from {url}: missing image");
-                return None;
-            };
+                .unwrap_or_default();
 
             Some(MangaInfo {
                 source_id,
@@ -124,8 +111,23 @@ fn parse_manga_list_inner(
         })
         .collect();
 
-    if !allow_empty && !body.trim().is_empty() && manga.is_empty() {
-        return Err(anyhow!("parsed 0 items from {url} — markup change?"));
+    let rejected = matched - manga.len();
+    if rejected > 0 {
+        log::warn!("Madara listing from {url}: rejected {rejected} of {matched} cards");
+    }
+    if manga.is_empty() {
+        // Manhwa18cc's search response has an explicit empty-result paragraph.
+        let empty_selector = Selector::parse(".content-manga-list > .manga-lists > p").unwrap();
+        let recognized_empty = matched == 0
+            && doc.select(&empty_selector).any(|el| {
+                let text = el.text().collect::<String>();
+                let text = text.trim();
+                text.starts_with("No result for \"") && text.ends_with('"')
+            });
+        anyhow::ensure!(
+            recognized_empty,
+            "parsed 0 items from {url} — markup change?"
+        );
     }
 
     Ok(manga)
@@ -201,12 +203,16 @@ pub fn search_manga_old(
     client: &RateLimitedAgent,
 ) -> Result<Vec<MangaInfo>> {
     let query = urlencoding::encode(query);
-    let body = client.fetch_text(&format!("{}/search?q={}&page={}", url, query, page))?;
+    let request_url = format!("{}/search?q={}&page={}", url, query, page);
+    let body = client
+        .fetch_text(&request_url)
+        .with_context(|| format!("Madara search request failed: {request_url}"))?;
 
     let selector =
         Selector::parse(".manga-item").map_err(|e| anyhow!("failed to parse selector: {:?}", e))?;
 
-    parse_manga_list_inner(url, source_id, &body, &selector, false, true)
+    parse_manga_list(url, source_id, &body, &selector, false)
+        .with_context(|| format!("Madara search response from {request_url}"))
 }
 
 pub fn search_manga(
@@ -242,7 +248,7 @@ pub fn search_manga(
             .map_err(|e| anyhow!("failed to parse selector: {:?}", e))?
     };
 
-    parse_manga_list_inner(url, source_id, &body, &selector, is_selector_url, true)
+    parse_manga_list(url, source_id, &body, &selector, is_selector_url)
 }
 
 pub fn get_manga_detail<C: DetailClient>(
@@ -254,6 +260,12 @@ pub fn get_manga_detail<C: DetailClient>(
     let body = client.fetch_body(&format!("{}{}", url, path))?;
 
     let doc = Html::parse_document(&body);
+
+    let manga_path = path.replace(url, "");
+    anyhow::ensure!(
+        !manga_path.trim().trim_matches('/').is_empty(),
+        "missing manga identity at {url}{path}"
+    );
 
     let selector_name =
         Selector::parse(r#"div.post-title h3, div.post-title h1, div.series-title h1"#)
@@ -303,15 +315,16 @@ pub fn get_manga_detail<C: DetailClient>(
             .map(|s| s.to_string())
             .collect(),
         status: None,
-        description: Option::from(
+        description: Some(
             doc.select(&selector_desc)
                 .flat_map(|el| el.text())
                 .collect::<Vec<&str>>()
                 .join("")
                 .trim()
                 .to_string(),
-        ),
-        path: path.to_string().replace(url, ""),
+        )
+        .filter(|description| !description.is_empty()),
+        path: manga_path,
         cover_url: doc
             .select(&selector_img)
             .find_map(|el| get_data_src(&el))
@@ -375,7 +388,9 @@ fn parse_chapters(
 
     let chapters: Vec<ChapterInfo> = doc
         .select(selector)
-        .filter_map(|el| {
+        .enumerate()
+        .map(|(index, el)| {
+            let row = index + 1;
             let chapter_name = el
                 .select(selector_chapter_name)
                 .flat_map(|el| el.text())
@@ -383,6 +398,10 @@ fn parse_chapters(
                 .join("")
                 .trim()
                 .to_string();
+            anyhow::ensure!(
+                !chapter_name.is_empty(),
+                "Madara chapter row {row} from {url}: missing title"
+            );
 
             let chapter_time_el = el.select(selector_chapter_time).next();
 
@@ -409,20 +428,24 @@ fn parse_chapters(
                 .and_utc()
                 .timestamp();
 
-            let Some(chapter_url) = el
+            let chapter_url = el
                 .select(selector_chapter_url)
                 .next()
                 .and_then(|link| link.value().attr("href"))
-                .filter(|href| !href.is_empty())
-            else {
-                log::warn!("Skipping malformed Madara chapter from {url}: missing chapter URL");
-                return None;
-            };
+                .filter(|href| !href.trim().is_empty())
+                .with_context(|| {
+                    format!("Madara chapter row {row} from {url}: missing chapter URL")
+                })?;
+            let path = chapter_url.replace(url, "");
+            anyhow::ensure!(
+                !path.trim().trim_matches('/').is_empty(),
+                "Madara chapter row {row} from {url}: missing chapter identity"
+            );
 
-            Some(ChapterInfo {
+            Ok(ChapterInfo {
                 source_id,
                 title: chapter_name.clone(),
-                path: chapter_url.to_string().replace(url, ""),
+                path,
                 number: chapter_name
                     .replace("Chapter ", "")
                     .split(' ')
@@ -433,7 +456,7 @@ fn parse_chapters(
                 uploaded,
             })
         })
-        .collect();
+        .collect::<Result<_>>()?;
 
     if chapters.is_empty() {
         return Err(anyhow!("parsed 0 items from {url} — markup change?"));
@@ -473,6 +496,7 @@ pub fn get_chapters_old(
         &selector_chapter_url,
         source_id,
     )
+    .with_context(|| format!("Madara chapter response from {url}{path}"))
 }
 
 pub fn get_chapters(
