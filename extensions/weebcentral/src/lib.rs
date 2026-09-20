@@ -406,6 +406,37 @@ mod test {
         assert_eq!(parse_chapter_number("Special 1"), None);
     }
 
+    #[test]
+    fn segment_after_handles_relative_and_absolute_links() {
+        for marker in ["chapters", "series"] {
+            for id in ["01JDHRNVEN6TES6S327K0AFXY8", "01JDHRNVENFGM20AY21CWXTJJE"] {
+                let path = format!("/{marker}/{id}");
+                for link in [
+                    path.clone(),
+                    format!("{URL}{path}"),
+                    format!("{path}?page=2"),
+                ] {
+                    assert_eq!(segment_after(&link, marker), Some(id));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn segment_after_rejects_missing_ids() {
+        for marker in ["chapters", "series"] {
+            for link in [
+                String::new(),
+                format!("/{marker}/"),
+                format!("/{marker}/?page=1"),
+                format!("{URL}/{marker}/"),
+                "/unrelated/id".to_string(),
+            ] {
+                assert_eq!(segment_after(&link, marker), None, "accepted {link:?}");
+            }
+        }
+    }
+
     // Planetes: completed series, so the values asserted below are stable.
     const MANGA_PATH: &str = "/series/01J76XY8K8BPR60XQNGPTEJ767";
 
@@ -506,15 +537,20 @@ mod test {
 
         let res = weebcentral.get_chapters(MANGA_PATH.to_string()).unwrap();
 
-        assert!(!res.is_empty());
+        assert_eq!(res.len(), 26, "Planetes should have all 26 chapters");
         assert!(
-            res.iter()
-                .all(|c| c
-                    .path
-                    .strip_prefix("/chapters/")
-                    .is_some_and(|id| !id.is_empty())),
+            res.iter().all(|c| c
+                .path
+                .strip_prefix("/chapters/")
+                .is_some_and(|id| !id.is_empty())),
             "chapter paths should look like /chapters/<id> with a non-empty id, got {:?}",
             res.iter().map(|c| c.path.clone()).collect::<Vec<_>>()
+        );
+        let unique_paths: std::collections::HashSet<_> = res.iter().map(|c| &c.path).collect();
+        assert_eq!(
+            unique_paths.len(),
+            res.len(),
+            "chapter paths must be unique"
         );
         let uploaded_count = res.iter().filter(|c| c.uploaded > 0).count();
         assert!(
