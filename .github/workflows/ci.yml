@@ -81,6 +81,10 @@ jobs:
           $HOME/.cargo/bin/tanoshi-cli --path target/release generate-json
           mv output/${{ matrix.platform.target }}/index.json output/
 
+      - name: Validate source index
+        if: ${{ matrix.platform.target == 'x86_64-unknown-linux-gnu' }}
+        run: jq -e 'type == "array" and length > 0' output/index.json
+
       # Generate already puts things in output folder
       - if: ${{ matrix.platform.target != 'x86_64-unknown-linux-gnu' }}
         run: |
