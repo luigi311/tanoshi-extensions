@@ -9,11 +9,9 @@ edition.workspace = true
 anyhow = { workspace = true }
 bytes = { workspace = true }
 cookie = "0.18"
-# ureq disables cookie_store's public-suffix validation by default. Keep the
-# feature enabled explicitly so cookies cannot be accepted for public suffixes.
-cookie_store = { version = "0.22", default-features = false, features = [
-    "public_suffix",
-] }
+# ureq's jar does not install a suffix list; validate imported solver domains
+# against this bundled list before insertion (no runtime download).
+psl = "2"
 # humantime gives log lines timestamps so they can be correlated with
 # FlareSolverr's own log output.
 env_logger = { version = "0.11", default-features = false, features = [
@@ -26,3 +24,6 @@ serde_json = { workspace = true }
 ureq = { version = "3", features = ["json", "cookies"] }
 url = "2"
 urlencoding = { workspace = true }
+
+[dev-dependencies]
+cookie_store = { version = "0.22", default-features = false, features = ["serde_json"] }

@@ -3,7 +3,6 @@ mod ratelimit;
 use anyhow::{Context, Result, anyhow};
 use bytes::Bytes;
 use cookie::time::OffsetDateTime as CookieOffsetDateTime;
-use cookie_store as _;
 use log::{debug, info, warn};
 use ratelimit::RateLimiter;
 use scraper::{Html, Selector};
@@ -284,58 +283,87 @@ pub fn build_rate_limited_flaresolverr_client_for_extension(
         .unwrap_or_else(|_| FlareClient::plain_with_rps(requests_per_second))
 }
 
-fn insert_flaresolverr_cookies_into_agent(agent: &Agent, cookies: Vec<FlareSolverrCookie>) {
+fn insert_flaresolverr_cookies_into_agent(
+    agent: &Agent,
+    solved_url: &str,
+    cookies: Vec<FlareSolverrCookie>,
+) -> Result<()> {
+    let origin =
+        Url::parse(solved_url).context("FlareSolverr returned an invalid cookie origin")?;
+    if !matches!(origin.scheme(), "http" | "https") || origin.host_str().is_none() {
+        return Err(anyhow!("FlareSolverr cookie origin must be an HTTP(S) URL"));
+    }
+    let uri = Uri::try_from(origin.as_str()).context("invalid FlareSolverr cookie origin URI")?;
+    let now = CookieOffsetDateTime::now_utc();
     let mut jar = agent.cookie_jar_lock();
-    for c in cookies {
-        let mut parts = vec![format!("{}={}", c.name, c.value)];
-
-        // Path
+    for (index, c) in cookies.into_iter().enumerate() {
+        let mut cookie = cookie::Cookie::build((c.name, c.value))
+            .secure(c.secure)
+            .http_only(c.httpOnly);
         if !c.path.is_empty() {
-            parts.push(format!("Path={}", c.path));
+            cookie = cookie.path(c.path);
         }
-        // Domain
+        // Chrome's exported cookie domains use a leading dot for domain
+        // cookies. Undotted domains (or an omitted domain) are host-only.
         if !c.domain.is_empty() {
-            parts.push(format!("Domain={}", c.domain));
-        }
-        // Secure / HttpOnly
-        if c.secure {
-            parts.push("Secure".to_string());
-        }
-        if c.httpOnly {
-            parts.push("HttpOnly".to_string());
-        }
-        // SameSite
-        match c.sameSite.as_str() {
-            "Strict" | "Lax" | "None" => parts.push(format!("SameSite={}", c.sameSite)),
-            _ => {}
-        }
-        // Expires
-        if let Some(expiry) = c.expiry
-            && let Ok(ts) = CookieOffsetDateTime::from_unix_timestamp(expiry as i64)
-        {
-            let max_age = ts.unix_timestamp() - CookieOffsetDateTime::now_utc().unix_timestamp();
-            if max_age > 0 {
-                parts.push(format!("Max-Age={}", max_age));
+            let is_domain_cookie = c.domain.starts_with('.');
+            let raw_domain = c.domain.strip_prefix('.').unwrap_or(&c.domain);
+            let Ok(domain) = url::Host::parse(raw_domain) else {
+                warn!("FlareSolverr: skipped cookie {index}: invalid domain");
+                continue;
+            };
+            if is_domain_cookie {
+                let url::Host::Domain(domain) = domain else {
+                    warn!(
+                        "FlareSolverr: skipped cookie {index}: domain cookie requires a hostname"
+                    );
+                    continue;
+                };
+                if domain.ends_with('.') || psl::suffix_str(&domain) == Some(domain.as_str()) {
+                    warn!("FlareSolverr: skipped cookie {index}: public suffix or invalid domain");
+                    continue;
+                }
+                cookie = cookie.domain(domain);
+            } else if origin.host().map(|host| host.to_owned()) != Some(domain) {
+                warn!("FlareSolverr: skipped cookie {index}: host-only origin mismatch");
+                continue;
             }
         }
-
-        let set_cookie = parts.join("; ");
-
-        // Bind parse to a relevant URI (scheme/host are used for defaults)
-        let uri_str = if c.domain.starts_with("http://") || c.domain.starts_with("https://") {
-            c.domain.clone()
-        } else {
-            format!("https://{}", c.domain)
+        if let Some(expiry) = c.expiry {
+            let Some(expires) = i64::try_from(expiry)
+                .ok()
+                .and_then(|timestamp| CookieOffsetDateTime::from_unix_timestamp(timestamp).ok())
+            else {
+                warn!("FlareSolverr: skipped cookie {index}: invalid expiry");
+                continue;
+            };
+            if expires <= now {
+                debug!("FlareSolverr: skipped cookie {index}: expired");
+                continue;
+            }
+            cookie = cookie.expires(expires);
+        }
+        cookie = match c.sameSite.as_str() {
+            "Strict" => cookie.same_site(cookie::SameSite::Strict),
+            "Lax" => cookie.same_site(cookie::SameSite::Lax),
+            "None" => cookie.same_site(cookie::SameSite::None),
+            _ => cookie,
         };
-        // Fallback: if domain is empty, use a dummy host.
-        let uri = Uri::try_from(uri_str.as_str())
-            .unwrap_or_else(|_| Uri::from_static("https://example.com"));
-
-        if let Ok(cookie) = Cookie::parse(set_cookie, &uri) {
-            let _ = jar.insert(cookie, &uri);
+        // Bind every cookie to the actual final URL. The jar validates domain
+        // matching and supplies defaults for host-only cookies and empty paths.
+        // Log rejection categories only; parser errors can contain cookie data.
+        match Cookie::parse(cookie.build().to_string(), &uri) {
+            Ok(cookie) => {
+                if jar.insert(cookie, &uri).is_err() {
+                    warn!("FlareSolverr: skipped cookie {index}: rejected by cookie jar");
+                }
+            }
+            Err(_) => {
+                warn!("FlareSolverr: skipped cookie {index}: invalid cookie or domain mismatch")
+            }
         }
     }
-    jar.release();
+    Ok(())
 }
 
 pub fn build_flaresolverr_client(
@@ -350,7 +378,7 @@ pub fn build_flaresolverr_client(
 
     let solution = request_flaresolverr(flaresolverr_url, &payload)?;
     let agent = build_ureq_agent(Some(&solution.userAgent));
-    insert_flaresolverr_cookies_into_agent(&agent, solution.cookies);
+    insert_flaresolverr_cookies_into_agent(&agent, &solution.url, solution.cookies)?;
 
     Ok(agent)
 }
@@ -715,7 +743,7 @@ impl FlareClient {
             Err(error) => return Err(error),
         };
         let new_agent = build_lenient_ureq_agent(Some(&solved.user_agent));
-        insert_flaresolverr_cookies_into_agent(&new_agent, solved.cookies);
+        insert_flaresolverr_cookies_into_agent(&new_agent, &solved.url, solved.cookies)?;
 
         {
             let mut guard = self.lock_inner();
@@ -1281,6 +1309,7 @@ fn proxy_post_empty(fs_url: &str, session_id: Option<&str>, url: &str) -> Result
 }
 
 struct Solved {
+    url: String,
     user_agent: String,
     cookies: Vec<FlareSolverrCookie>,
 }
@@ -1299,6 +1328,7 @@ fn solve_with_flaresolverr(
 
     // Solution headers describe the browser response, not future requests.
     Ok(Solved {
+        url: solution.url,
         user_agent: solution.userAgent,
         cookies: solution.cookies,
     })
@@ -1725,8 +1755,9 @@ mod test {
             json!({
                 "status": "ok", "message": "", "startTimestamp": 0,
                 "endTimestamp": 0, "version": "3.5.2",
-                "solution": {"url": "https://example.test/final", "status": status,
-                    "cookies": [], "userAgent": "TestUA",
+                "solution": {"url": "https://redirected.example.test/final", "status": status,
+                    "cookies": [{"domain": "", "expiry": null, "httpOnly": true,
+                        "name": "session", "value": "test-value", "path": "/", "sameSite": "Lax", "secure": true}], "userAgent": "TestUA",
                     "headers": {"Content-Type": "text/html", "Content-Length": "9000", "X-Response-Only": "do-not-replay"},
                     "response": body}
             })
@@ -1831,6 +1862,15 @@ mod test {
                                     "response headers must not become request defaults"
                                 ));
                             }
+                            if client
+                                .lock_inner()
+                                .agent
+                                .cookie_jar_lock()
+                                .get("redirected.example.test", "/", "session")
+                                .is_none()
+                            {
+                                return Err(anyhow!("cookie must use the final solved URL"));
+                            }
                             Ok("content".to_string())
                         })
                     }
@@ -1875,53 +1915,117 @@ mod test {
     #[test]
     fn test_insert_cookies_into_agent() {
         let agent = build_ureq_agent(Some("TestUA"));
+        let origin = "https://reader.example.com/chapters/1";
+        let mut scoped = mock_cookie("scoped", "path", ".example.com");
+        scoped.path = "/chapters".to_string();
+        let mut expired = mock_cookie("expired", "must-not-send", ".example.com");
+        expired.expiry = Some(1);
+        let mut invalid_expiry = expired.clone();
+        invalid_expiry.name = "invalid_expiry".to_string();
+        invalid_expiry.expiry = Some(u64::MAX);
         let cookies = vec![
-            mock_cookie("cf_clearance", "test_value", ".example.com"),
-            mock_cookie("session_id", "sess_abc", ".example.com"),
+            mock_cookie("domain", "old", ".example.com"),
+            mock_cookie("host", "host-only", "reader.example.com"),
+            scoped,
+            expired,
+            invalid_expiry,
+            mock_cookie("suffix", "must-not-send", ".com"),
+            mock_cookie("foreign", "must-not-send", ".other.com"),
+            mock_cookie("foreign_host", "must-not-send", "other.com"),
         ];
+        insert_flaresolverr_cookies_into_agent(&agent, origin, cookies).unwrap();
+        insert_flaresolverr_cookies_into_agent(
+            &agent,
+            origin,
+            vec![mock_cookie("domain", "new", ".EXAMPLE.COM")],
+        )
+        .unwrap();
+        assert_eq!(agent.cookie_jar_lock().iter().count(), 3);
 
-        // Should not panic — verifies the full cookie parsing + insertion pipeline
-        insert_flaresolverr_cookies_into_agent(&agent, cookies);
-
-        // Insert again with different values to verify overwrite doesn't panic
-        let cookies2 = vec![mock_cookie("cf_clearance", "new_value", ".example.com")];
-        insert_flaresolverr_cookies_into_agent(&agent, cookies2);
+        // Inspect the jar's actual stored scope through cookie_store's request
+        // matching API, the same API ureq uses to build its Cookie header.
+        let mut saved = Vec::new();
+        agent.cookie_jar_lock().save_json(&mut saved).unwrap();
+        let store = cookie_store::serde::json::load(saved.as_slice()).unwrap();
+        for (url, expected) in [
+            (
+                origin,
+                vec![("domain", "new"), ("host", "host-only"), ("scoped", "path")],
+            ),
+            (
+                "https://cdn.example.com/chapters/2",
+                vec![("domain", "new"), ("scoped", "path")],
+            ),
+            ("https://child.reader.example.com/", vec![("domain", "new")]),
+            (
+                "https://reader.example.com/chapters-extra",
+                vec![("domain", "new"), ("host", "host-only")],
+            ),
+            ("http://reader.example.com/chapters/1", vec![]),
+            ("https://other.com/chapters/1", vec![]),
+        ] {
+            let mut actual: Vec<_> = store
+                .get_request_values(&Url::parse(url).unwrap())
+                .collect();
+            actual.sort_unstable();
+            assert_eq!(actual, expected, "cookie selection for {url}");
+        }
     }
 
     #[test]
-    fn test_insert_cookies_domain_with_https_prefix() {
+    fn test_insert_cookies_rejects_invalid_and_public_suffix_domains() {
+        for (origin, domain) in [
+            ("https://cdn.example.com", "https://cdn.example.com"),
+            ("https://example.co.uk", ".co.uk"),
+            ("https://tenant.github.io", ".github.io"),
+            ("https://foo.ck", ".ck"),
+            ("https://tenant.foo.ck", ".foo.ck"),
+        ] {
+            let agent = build_ureq_agent(None);
+            insert_flaresolverr_cookies_into_agent(
+                &agent,
+                origin,
+                vec![mock_cookie("token", "must-not-send", domain)],
+            )
+            .unwrap();
+            assert_eq!(
+                agent.cookie_jar_lock().iter().count(),
+                0,
+                "accepted {domain}"
+            );
+        }
+        // Public-suffix exception rules must still permit registrable domains.
         let agent = build_ureq_agent(None);
-        let cookies = vec![FlareSolverrCookie {
-            domain: "https://cdn.example.com".to_string(),
-            expiry: None,
-            httpOnly: false,
-            name: "token".to_string(),
-            path: "/".to_string(),
-            sameSite: "".to_string(),
-            secure: false,
-            value: "abc".to_string(),
-        }];
-
-        // Should not panic even with an https:// prefixed domain
-        insert_flaresolverr_cookies_into_agent(&agent, cookies);
+        insert_flaresolverr_cookies_into_agent(
+            &agent,
+            "https://www.ck/",
+            vec![mock_cookie("token", "allowed", ".www.ck")],
+        )
+        .unwrap();
+        assert_eq!(agent.cookie_jar_lock().iter().count(), 1);
     }
 
     #[test]
-    fn test_insert_cookies_empty_domain_fallback() {
+    fn test_insert_cookies_empty_domain_uses_solved_origin() {
         let agent = build_ureq_agent(None);
-        let cookies = vec![FlareSolverrCookie {
-            domain: "".to_string(),
-            expiry: None,
-            httpOnly: false,
-            name: "x".to_string(),
-            path: "/".to_string(),
-            sameSite: "".to_string(),
-            secure: false,
-            value: "y".to_string(),
-        }];
-
-        // Should not panic — falls back to https://example.com
-        insert_flaresolverr_cookies_into_agent(&agent, cookies);
+        let mut cookie = mock_cookie("session", "value", "");
+        cookie.expiry = None;
+        cookie.path.clear();
+        insert_flaresolverr_cookies_into_agent(
+            &agent,
+            "https://redirected.example.org/reader/chapter",
+            vec![cookie],
+        )
+        .unwrap();
+        let jar = agent.cookie_jar_lock();
+        assert_eq!(jar.iter().count(), 1);
+        assert_eq!(
+            jar.get("redirected.example.org", "/reader", "session")
+                .unwrap()
+                .value(),
+            "value"
+        );
+        assert!(jar.get("example.com", "/", "session").is_none());
     }
 
     // --- build_ureq_agent --------------------------------------------------
