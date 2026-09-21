@@ -447,7 +447,7 @@ dependencies = [
 
 [[package]]
 name = "guya"
-version = "0.5.11"
+version = "0.5.13"
 dependencies = [
  "anyhow",
  "extension-utils",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "mangadex"
-version = "0.5.10"
+version = "0.5.13"
 dependencies = [
  "anyhow",
  "chrono",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "manhwa18cc"
-version = "0.5.11"
+version = "0.5.13"
 dependencies = [
  "anyhow",
  "extension-utils",
@@ -869,7 +869,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nhentai"
-version = "0.5.16"
+version = "0.5.18"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1628,7 +1628,7 @@ dependencies = [
 
 [[package]]
 name = "weebcentral"
-version = "0.5.11"
+version = "0.5.13"
 dependencies = [
  "anyhow",
  "chrono",
