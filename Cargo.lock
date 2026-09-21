@@ -879,8 +879,8 @@ dependencies = [
  "networking",
  "scraper",
  "serde",
- "serde_json",
  "tanoshi-lib",
+ "url",
  "urlencoding",
 ]
 
