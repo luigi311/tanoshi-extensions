@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
-use madara::{get_chapters_old, get_manga_detail, parse_manga_list, search_manga_old};
-use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
+use madara::{fetch_html_chapters, get_manga_detail, parse_manga_list};
+use networking::{FetchedDocument, RateLimitedAgent, build_rate_limited_ureq_agent};
 use scraper::{Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 
@@ -26,13 +26,43 @@ impl Default for Manhwa18cc {
 }
 
 fn get_manga_list(page: i64, orderby: &str, client: &RateLimitedAgent) -> Result<Vec<MangaInfo>> {
-    let body = client.fetch_text(&format!("{URL}/webtoons/{page}?orderby={orderby}"))?;
+    let page = page.max(1);
+    let response = client.fetch_document(&format!("{URL}/webtoons/{page}?orderby={orderby}"))?;
+    parse_listing(&response, page, false)
+        .with_context(|| format!("Manhwa18cc listing from {}", response.final_url))
+}
 
+fn parse_listing(response: &FetchedDocument, page: i64, search: bool) -> Result<Vec<MangaInfo>> {
     let selector =
         Selector::parse(".manga-item").map_err(|e| anyhow!("failed to parse selector: {:?}", e))?;
 
-    parse_manga_list(URL, ID, &body, &selector, false)
-        .with_context(|| format!("Manhwa18cc listing from {URL}/webtoons/{page}?orderby={orderby}"))
+    let manga = parse_manga_list(URL, ID, response, &selector)?;
+    let doc = Html::parse_document(&response.body);
+    let pagination = Selector::parse(".pagination").unwrap();
+    let Some(pagination) = doc.select(&pagination).next() else {
+        // Search omits pagination controls when all matches fit on one page.
+        anyhow::ensure!(search, "missing browse pagination marker");
+        return Ok(if page > 1 { vec![] } else { manga });
+    };
+    let active = Selector::parse("li.active").unwrap();
+    let served = pagination
+        .select(&active)
+        .next()
+        .context("missing active pagination marker")?;
+    let served: i64 = extension_utils::element_text(served)
+        .context("empty active page number")?
+        .parse()
+        .context("invalid active page number")?;
+    anyhow::ensure!(served > 0, "invalid active page number");
+    if served == page {
+        return Ok(manga);
+    }
+    let end = Selector::parse("li.next.disabled").unwrap();
+    anyhow::ensure!(
+        served < page && pagination.select(&end).next().is_some(),
+        "requested page {page} but source returned page {served} without a matching end marker"
+    );
+    Ok(vec![])
 }
 
 impl Extension for Manhwa18cc {
@@ -66,7 +96,14 @@ impl Extension for Manhwa18cc {
     ) -> Result<Vec<MangaInfo>> {
         log::debug!("{NAME}: search_manga page={page} query={query:?}");
         if let Some(query) = query {
-            search_manga_old(URL, ID, page, &query, &self.client)
+            let page = page.max(1);
+            let mut url = extension_utils::source_request_url(URL, "/search")?;
+            url.query_pairs_mut()
+                .append_pair("q", &query)
+                .append_pair("page", &page.to_string());
+            let response = self.client.fetch_document(url.as_str())?;
+            parse_listing(&response, page, true)
+                .with_context(|| format!("Manhwa18cc search from {}", response.final_url))
         } else {
             bail!("query can not be empty")
         }
@@ -79,14 +116,15 @@ impl Extension for Manhwa18cc {
 
     fn get_chapters(&self, path: String) -> Result<Vec<ChapterInfo>> {
         log::debug!("{NAME}: get_chapters path={path}");
-        get_chapters_old(URL, &path, ID, &self.client)
+        fetch_html_chapters(URL, &path, ID, &self.client)
     }
 
     fn get_pages(&self, path: String) -> Result<Vec<String>> {
         log::debug!("{NAME}: get_pages path={path}");
-        let body = self.client.fetch_text(&format!("{}{}", URL, path))?;
+        let request_url = extension_utils::source_request_url(URL, &path)?;
+        let response = self.client.fetch_document(request_url.as_str())?;
 
-        let doc = Html::parse_document(&body);
+        let doc = Html::parse_document(&response.body);
 
         let selector = Selector::parse(r#".read-content img"#)
             .map_err(|e| anyhow!("failed to parse selector: {:?}", e))?;
@@ -96,16 +134,22 @@ impl Extension for Manhwa18cc {
             .enumerate()
             .map(|(index, el)| {
                 let page = index + 1;
-                el.value()
+                let src = el
+                    .value()
                     .attr("data-src")
                     .filter(|src| !src.trim().is_empty())
                     .or_else(|| el.value().attr("src"))
                     .map(str::trim)
                     .filter(|src| !src.is_empty())
-                    .map(str::to_string)
                     .with_context(|| {
                         format!("Manhwa18cc page {page} from {URL}{path}: missing image source")
-                    })
+                    })?;
+                extension_utils::resolve_asset_url(&response.final_url, src).with_context(|| {
+                    format!(
+                        "Manhwa18cc page {page} from {}: invalid image source {src:?}",
+                        response.final_url
+                    )
+                })
             })
             .collect::<Result<_>>()?;
 
@@ -129,6 +173,33 @@ mod test {
     const COMPLETED_CHAPTER_COUNT: usize = 70;
 
     #[test]
+    fn listing_pagination_stops_after_the_served_final_page() {
+        let card = r#"<div class="manga-item"><div class="data"><h3>
+            <a href="/webtoon/example">Example</a></h3></div></div>"#;
+        let mut response = FetchedDocument {
+            final_url: format!("{URL}/webtoons/4"),
+            body: format!(
+                r#"{card}<ul class="pagination">
+                <li class="active"><a>3</a></li>
+                <li class="next disabled"><span>Next</span></li></ul>"#
+            ),
+        };
+        for search in [false, true] {
+            assert_eq!(parse_listing(&response, 3, search).unwrap().len(), 1);
+            assert!(parse_listing(&response, 4, search).unwrap().is_empty());
+            assert!(parse_listing(&response, 2, search).is_err());
+        }
+        response.body = response.body.replace("next disabled", "next");
+        assert!(parse_listing(&response, 4, false).is_err());
+        response.body = card.to_string();
+        assert_eq!(parse_listing(&response, 1, true).unwrap().len(), 1);
+        assert!(parse_listing(&response, 2, true).unwrap().is_empty());
+        assert!(parse_listing(&response, 1, false).is_err());
+        response.body = "<p>unexpected response</p>".into();
+        assert!(parse_listing(&response, 2, true).is_err());
+    }
+
+    #[test]
     #[ignore = "live source check"]
     fn test_get_latest_manga() {
         let manhwa18cc = Manhwa18cc::default();
@@ -144,6 +215,7 @@ mod test {
             "{} should be different than {}",
             res1[0].path, res2[0].path
         );
+        assert!(manhwa18cc.get_latest_manga(99999).unwrap().is_empty());
     }
 
     #[test]
@@ -153,6 +225,7 @@ mod test {
 
         let res = manhwa18cc.get_popular_manga(1).unwrap();
         assert!(!res.is_empty());
+        assert!(manhwa18cc.get_popular_manga(99999).unwrap().is_empty());
     }
 
     #[test]
@@ -164,6 +237,14 @@ mod test {
             .search_manga(1, Some("tutoring".to_string()), None)
             .unwrap();
         assert!(!res.is_empty());
+        for query in ["tutoring", "a"] {
+            assert!(
+                manhwa18cc
+                    .search_manga(99999, Some(query.into()), None)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
     }
 
     #[test]
