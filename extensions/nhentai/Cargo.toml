@@ -1,6 +1,6 @@
 [package]
 name = "nhentai"
-version = "0.5.16"
+version = "0.5.18"
 edition.workspace = true
 
 [lib]
@@ -15,8 +15,8 @@ log = { workspace = true }
 networking = { workspace = true }
 scraper = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 tanoshi-lib = { workspace = true }
+url = "2"
 urlencoding = { workspace = true }
 
 [dev-dependencies]

@@ -18,6 +18,7 @@ env_logger = { version = "0.11", default-features = false, features = [
     "humantime",
 ] }
 log = { workspace = true }
+httpdate = "1"
 scraper = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

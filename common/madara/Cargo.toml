@@ -13,3 +13,4 @@ networking = { workspace = true }
 scraper = { workspace = true }
 tanoshi-lib = { workspace = true }
 urlencoding = { workspace = true }
+extension-utils = { workspace = true }

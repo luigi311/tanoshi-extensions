@@ -1,6 +1,6 @@
 [package]
 name = "guya"
-version = "0.5.11"
+version = "0.5.13"
 edition.workspace = true
 
 
@@ -10,11 +10,12 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = { workspace = true }
 extension-utils = { workspace = true }
-guyalib = { path = "../../common/guyalib" }
-lazy_static = { workspace = true }
 log = { workspace = true }
 networking = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tanoshi-lib = { workspace = true }
+urlencoding = { workspace = true }
 
 [dev-dependencies]
 extension-utils = { workspace = true, features = ["test-support"] }

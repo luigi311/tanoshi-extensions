@@ -1,3 +1,9 @@
+mod text;
+pub use text::{description_text, element_text, optional_text, unique_text};
+
+mod url;
+pub use url::{resolve_asset_url, resolve_cover_url, source_link_path, source_request_url};
+
 use bytes::Bytes;
 use networking::RateLimitedAgent;
 use tanoshi_lib::prelude::{Extension, Input, PluginRegistrar};

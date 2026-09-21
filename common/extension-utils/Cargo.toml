@@ -13,3 +13,5 @@ image = { version = "0.25", default-features = false, features = ["gif", "jpeg",
 log = { workspace = true }
 networking = { workspace = true }
 tanoshi-lib = { workspace = true }
+url = "2"
+scraper = { workspace = true }
