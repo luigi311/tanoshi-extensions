@@ -340,7 +340,9 @@ dependencies = [
  "image",
  "log",
  "networking",
+ "scraper",
  "tanoshi-lib",
+ "url",
 ]
 
 [[package]]
