@@ -457,22 +457,12 @@ version = "0.5.11"
 dependencies = [
  "anyhow",
  "extension-utils",
- "guyalib",
- "log",
- "networking",
- "tanoshi-lib",
-]
-
-[[package]]
-name = "guyalib"
-version = "0.0.0"
-dependencies = [
- "anyhow",
  "log",
  "networking",
  "serde",
  "serde_json",
  "tanoshi-lib",
+ "urlencoding",
 ]
 
 [[package]]

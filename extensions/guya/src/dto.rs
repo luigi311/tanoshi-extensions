@@ -4,12 +4,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Detail {
+    #[serde(default)]
     pub author: String,
+    #[serde(default)]
     pub artist: String,
+    #[serde(default)]
     pub description: String,
     pub slug: String,
+    #[serde(default)]
     pub cover: String,
-    pub groups: HashMap<String, String>,
     pub last_updated: i64,
 }
 

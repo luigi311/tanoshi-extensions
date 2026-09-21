@@ -10,10 +10,12 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = { workspace = true }
 extension-utils = { workspace = true }
-guyalib = { path = "../../common/guyalib" }
 log = { workspace = true }
 networking = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 tanoshi-lib = { workspace = true }
+urlencoding = { workspace = true }
 
 [dev-dependencies]
 extension-utils = { workspace = true, features = ["test-support"] }

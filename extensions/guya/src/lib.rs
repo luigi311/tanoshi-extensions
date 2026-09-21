@@ -1,5 +1,8 @@
+mod api;
+mod dto;
+
+use crate::api::{MangaOrder, get_chapters, get_manga_detail, get_manga_list, get_pages};
 use anyhow::Result;
-use guyalib::{MangaOrder, get_chapters, get_manga_detail, get_manga_list, get_pages};
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 
