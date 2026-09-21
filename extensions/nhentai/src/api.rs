@@ -5,7 +5,7 @@ use crate::{
         parse_manga_list,
     },
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use networking::parse_browser_json;
 use serde::Deserialize;
 use std::time::Instant;
@@ -100,12 +100,7 @@ impl NHentai {
     pub(super) fn fetch_pages(&self, path: String) -> Result<Vec<String>> {
         log::debug!("{NAME}: get_pages path={path}");
         let mut request_url = extension_utils::source_request_url(URL, &path)?;
-        let gallery_path = request_url.path().to_string();
-        let gallery_id = gallery_path
-            .trim_matches('/')
-            .strip_prefix("g/")
-            .filter(|id| !id.is_empty() && !id.contains('/'))
-            .ok_or_else(|| anyhow!("invalid NHentai gallery path: {path}"))?;
+        let gallery_id = gallery_id(&path)?;
         request_url.set_path(&format!("/api/v2/galleries/{gallery_id}"));
         let api_url = request_url.as_str();
         let gallery_res = self
