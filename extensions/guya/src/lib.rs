@@ -1,6 +1,5 @@
 use anyhow::Result;
 use guyalib::{MangaOrder, get_chapters, get_manga_detail, get_manga_list, get_pages};
-use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 
@@ -13,27 +12,19 @@ const REQUESTS_PER_SECOND: f64 = 10.0;
 
 extension_utils::export_extension!(register, Guya, NAME);
 
-lazy_static! {
-    static ref PREFERENCES: Vec<Input> = vec![];
-}
-
 pub struct Guya {
-    preferences: Vec<Input>,
     client: RateLimitedAgent,
 }
 
 impl Default for Guya {
     fn default() -> Self {
         Self {
-            preferences: PREFERENCES.clone(),
             client: build_rate_limited_ureq_agent(None, Some(REQUESTS_PER_SECOND)),
         }
     }
 }
 
 impl Extension for Guya {
-    extension_utils::impl_preferences!(preferences);
-
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,

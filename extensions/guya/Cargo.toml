@@ -11,7 +11,6 @@ crate-type = ["cdylib"]
 anyhow = { workspace = true }
 extension-utils = { workspace = true }
 guyalib = { path = "../../common/guyalib" }
-lazy_static = { workspace = true }
 log = { workspace = true }
 networking = { workspace = true }
 tanoshi-lib = { workspace = true }

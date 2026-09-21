@@ -3,7 +3,6 @@ resolver = "3"
 members = ["extensions/*", "common/*"]
 exclude = [
     "extensions/dead",
-    "common/dead",
 ]
 
 [workspace.package]

@@ -1,15 +1,10 @@
 use anyhow::{Context, Result, anyhow, bail};
-use lazy_static::lazy_static;
 use madara::{get_chapters_old, get_manga_detail, parse_manga_list, search_manga_old};
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use scraper::{Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 
 extension_utils::export_extension!(register, Manhwa18cc, NAME);
-
-lazy_static! {
-    static ref PREFERENCES: Vec<Input> = vec![];
-}
 
 const ID: i64 = 8;
 const NAME: &str = "Manhwa18cc";
@@ -19,14 +14,12 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 const REQUESTS_PER_SECOND: f64 = 10.0;
 
 pub struct Manhwa18cc {
-    preferences: Vec<Input>,
     client: RateLimitedAgent,
 }
 
 impl Default for Manhwa18cc {
     fn default() -> Self {
         Self {
-            preferences: PREFERENCES.clone(),
             client: build_rate_limited_ureq_agent(None, Some(REQUESTS_PER_SECOND)),
         }
     }
@@ -43,8 +36,6 @@ fn get_manga_list(page: i64, orderby: &str, client: &RateLimitedAgent) -> Result
 }
 
 impl Extension for Manhwa18cc {
-    extension_utils::impl_preferences!(preferences);
-
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,

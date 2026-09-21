@@ -456,7 +456,6 @@ dependencies = [
  "anyhow",
  "extension-utils",
  "guyalib",
- "lazy_static",
  "log",
  "networking",
  "tanoshi-lib",
@@ -795,7 +794,6 @@ version = "0.5.11"
 dependencies = [
  "anyhow",
  "extension-utils",
- "lazy_static",
  "log",
  "madara",
  "networking",
@@ -1685,7 +1683,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "extension-utils",
- "lazy_static",
  "log",
  "networking",
  "scraper",

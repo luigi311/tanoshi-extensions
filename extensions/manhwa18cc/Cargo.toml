@@ -9,7 +9,6 @@ crate-type = ["cdylib"]
 [dependencies]
 anyhow = { workspace = true }
 extension-utils = { workspace = true }
-lazy_static = { workspace = true }
 log = { workspace = true }
 madara = { path = "../../common/madara" }
 networking = { workspace = true }

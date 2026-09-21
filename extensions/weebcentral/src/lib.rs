@@ -1,16 +1,11 @@
 use anyhow::{Context, Result};
 use chrono::prelude::*;
-use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use scraper::{ElementRef, Html, Selector};
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 use urlencoding::encode;
 
 extension_utils::export_extension!(register, Weebcentral, NAME);
-
-lazy_static! {
-    static ref PREFERENCES: Vec<Input> = vec![];
-}
 
 const ID: i64 = 28;
 const NAME: &str = "WeebCentral";
@@ -65,7 +60,6 @@ fn find_sidebar_section<'a>(
 }
 
 pub struct Weebcentral {
-    preferences: Vec<Input>,
     client: RateLimitedAgent,
     client_pages: RateLimitedAgent,
 }
@@ -73,7 +67,6 @@ pub struct Weebcentral {
 impl Default for Weebcentral {
     fn default() -> Self {
         Self {
-            preferences: PREFERENCES.clone(),
             client: build_rate_limited_ureq_agent(None, Some(REQUESTS_PER_SECOND)),
             client_pages: build_rate_limited_ureq_agent(None, Some(PAGES_REQUESTS_PER_SECOND)),
         }
@@ -203,8 +196,6 @@ fn get_manga_list(
 }
 
 impl Extension for Weebcentral {
-    extension_utils::impl_preferences!(preferences);
-
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,

@@ -10,7 +10,6 @@ crate-type = ["cdylib"]
 anyhow = { workspace = true }
 chrono = { workspace = true }
 extension-utils = { workspace = true }
-lazy_static = { workspace = true }
 log = { workspace = true }
 networking = { workspace = true }
 scraper = { workspace = true }

@@ -8,16 +8,11 @@ use crate::dto::{
 use anyhow::{Context, Result, bail, ensure};
 use dto::ResultsAtHome;
 use fancy_regex::Regex;
-use lazy_static::lazy_static;
 use networking::{RateLimitedAgent, build_rate_limited_ureq_agent};
 use std::collections::HashSet;
 use tanoshi_lib::prelude::{ChapterInfo, Extension, Input, Lang, MangaInfo, SourceInfo};
 
 extension_utils::export_extension!(register, Mangadex, NAME);
-
-lazy_static! {
-    static ref PREFERENCES: Vec<Input> = vec![];
-}
 
 const ID: i64 = 2;
 const NAME: &str = "Mangadex";
@@ -32,7 +27,6 @@ const REQUESTS_PER_SECOND_AT_HOME: f64 = 0.6;
 const CHAPTER_PAGE_LIMIT: i64 = 500;
 
 pub struct Mangadex {
-    preferences: Vec<Input>,
     client: RateLimitedAgent,
     client_at_home: RateLimitedAgent,
 }
@@ -40,7 +34,6 @@ pub struct Mangadex {
 impl Default for Mangadex {
     fn default() -> Self {
         Self {
-            preferences: PREFERENCES.clone(),
             client: build_rate_limited_ureq_agent(
                 Some(format!("Tanoshi-Extension/{VERSION}").as_str()),
                 Some(REQUESTS_PER_SECOND),
@@ -300,8 +293,6 @@ impl Mangadex {
 }
 
 impl Extension for Mangadex {
-    extension_utils::impl_preferences!(preferences);
-
     fn get_source_info(&self) -> SourceInfo {
         SourceInfo {
             id: ID,
