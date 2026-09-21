@@ -1637,7 +1637,6 @@ dependencies = [
  "networking",
  "scraper",
  "tanoshi-lib",
- "urlencoding",
 ]
 
 [[package]]
