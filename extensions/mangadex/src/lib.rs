@@ -242,11 +242,9 @@ impl Mangadex {
 
         let url = format!("{}/manga?{}", URL, query.to_query_string()?);
 
-        // ureq v3: read JSON from the body
-        let mut resp = self.client.get(&url).call()?;
-        let res: Results = resp
-            .body_mut()
-            .read_json()
+        let res: Results = self
+            .client
+            .fetch_json(&url)
             .with_context(|| format!("invalid MangaDex listing API response from {url}"))?;
         ensure!(
             res.result == "ok",
@@ -350,10 +348,9 @@ impl Extension for Mangadex {
             URL, path
         );
 
-        let mut resp = self.client.get(&url).call()?;
-        let res: Results = resp
-            .body_mut()
-            .read_json()
+        let res: Results = self
+            .client
+            .fetch_json(&url)
             .with_context(|| format!("invalid MangaDex detail API response from {url}"))?;
         ensure!(
             res.result == "ok",
@@ -383,10 +380,9 @@ impl Extension for Mangadex {
                 URL, path
             );
 
-            let mut resp = self.client.get(&url).call()?;
-            let res: Results = resp
-                .body_mut()
-                .read_json()
+            let res: Results = self
+                .client
+                .fetch_json(&url)
                 .with_context(|| format!("invalid MangaDex chapter API response from {url}"))?;
             ensure!(
                 res.result == "ok",
@@ -460,10 +456,9 @@ impl Extension for Mangadex {
         let url = format!("{}/at-home/server/{}", URL, chapter_id);
         log::debug!("{NAME}: get_pages at-home url={url}");
 
-        let mut resp = self.client_at_home.get(&url).call()?;
-        let res: ResultsAtHome = resp
-            .body_mut()
-            .read_json()
+        let res: ResultsAtHome = self
+            .client_at_home
+            .fetch_json(&url)
             .with_context(|| format!("invalid MangaDex At-Home API response from {url}"))?;
         map_result_to_pages(res).with_context(|| format!("invalid MangaDex pages from {url}"))
     }

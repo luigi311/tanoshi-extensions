@@ -12,7 +12,7 @@ pub trait DetailClient {
 impl DetailClient for FlareClient {
     fn fetch_body(&self, url: &str) -> anyhow::Result<String> {
         // use your FlareClient GET path (Cloudflare-aware)
-        self.get_text(url)
+        self.fetch_text(url)
     }
 }
 
