@@ -11,11 +11,10 @@ anyhow = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 extension-utils = { workspace = true }
 fancy-regex = "0.16"
-lazy_static = { workspace = true }
 log = { workspace = true }
 networking = { workspace = true }
-phf = { version = "0.13", features = ["macros"] }
 serde = { workspace = true }
+serde_json = { workspace = true }
 serde_qs = "0.15"
 tanoshi-lib = { workspace = true }
 url = "2"
