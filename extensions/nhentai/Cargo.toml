@@ -1,6 +1,6 @@
 [package]
 name = "nhentai"
-version = "0.5.18"
+version = "0.6.0"
 edition.workspace = true
 
 [lib]

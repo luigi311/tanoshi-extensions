@@ -70,7 +70,9 @@ pub enum Order {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListOrder {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_uploaded_chapter: Option<Order>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub followed_count: Option<Order>,
 }
 
@@ -79,17 +81,29 @@ pub struct ListOrder {
 pub struct MangaList {
     pub limit: i64,
     pub offset: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub authors: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub artists: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub year: Option<i64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub included_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub included_tags_mode: Option<TagMode>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub excluded_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub excluded_tags_mode: Option<TagMode>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub status: Vec<Status>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub content_rating: Vec<Rating>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<ListOrder>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub includes: Vec<String>,
 }
 
@@ -525,17 +539,36 @@ mod test {
     }
 
     #[test]
-    fn test_latest_uploaded_chapter_order_query() {
-        let query = MangaList {
-            order: Some(ListOrder {
-                latest_uploaded_chapter: Some(Order::Desc),
+    fn test_manga_list_order_query() {
+        for (order, expected) in [
+            (
+                Some(ListOrder {
+                    latest_uploaded_chapter: Some(Order::Desc),
+                    ..Default::default()
+                }),
+                vec!["order[latestUploadedChapter]=desc"],
+            ),
+            (
+                Some(ListOrder {
+                    followed_count: Some(Order::Desc),
+                    ..Default::default()
+                }),
+                vec!["order[followedCount]=desc"],
+            ),
+            (None, vec![]),
+        ] {
+            let query = MangaList {
+                order,
                 ..Default::default()
-            }),
-            ..Default::default()
-        }
-        .to_query_string()
-        .unwrap();
+            }
+            .to_query_string()
+            .unwrap();
+            let order_params: Vec<_> = query
+                .split('&')
+                .filter(|param| param.starts_with("order"))
+                .collect();
 
-        assert!(query.contains("order[latestUploadedChapter]=desc"));
+            assert_eq!(order_params, expected);
+        }
     }
 }

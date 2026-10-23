@@ -1,6 +1,6 @@
 [package]
 name = "mangadex"
-version = "0.5.13"
+version = "0.6.0"
 edition.workspace = true
 
 [lib]
@@ -10,12 +10,12 @@ crate-type = ["cdylib"]
 anyhow = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 extension-utils = { workspace = true }
-fancy-regex = "0.16"
+fancy-regex = "0.19"
 log = { workspace = true }
 networking = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_qs = "0.15"
+serde_qs = "1"
 tanoshi-lib = { workspace = true }
 url = "2"
 
